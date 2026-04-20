@@ -1,66 +1,40 @@
-from supabase import create_client
+"""
+Supabase client — singleton, used throughout the app.
+
+Uses SERVICE_ROLE_KEY for backend operations (bypasses RLS).
+The frontend uses the ANON key for client-side auth.
+"""
+from supabase import create_client, Client
 from app.config import get_settings
 import logging
 
 logger = logging.getLogger(__name__)
 
-
-class SupabaseService:
-    """Wrapper for Supabase client and operations"""
-    
-    _instance = None
-    
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super(SupabaseService, cls).__new__(cls)
-        return cls._instance
-    
-    def __init__(self):
-        if not hasattr(self, 'client'):
-            settings = get_settings()
-            self.client = create_client(
-                settings.supabase_url,
-                settings.supabase_key
-            )
-            logger.info("Supabase client initialized")
-    
-    def get_user(self, user_id: str):
-        """Get user profile"""
-        try:
-            response = self.client.table("student_profiles").select("*").eq("user_id", user_id).single().execute()
-            return response.data
-        except Exception as e:
-            logger.error(f"Error fetching user: {e}")
-            return None
-    
-    def save_question(self, user_id: str, question: str, response: str, chapter: str):
-        """Save user question and AI response"""
-        try:
-            data = {
-                "user_id": user_id,
-                "question": question,
-                "response": response,
-                "chapter": chapter
-            }
-            self.client.table("user_questions").insert(data).execute()
-            return True
-        except Exception as e:
-            logger.error(f"Error saving question: {e}")
-            return False
-    
-    def search_textbook_chunks(self, query_embedding: list, limit: int = 5):
-        """Search textbook chunks using pgvector"""
-        try:
-            response = self.client.rpc(
-                "search_textbook_chunks",
-                {"query_embedding": query_embedding, "match_count": limit}
-            ).execute()
-            return response.data
-        except Exception as e:
-            logger.error(f"Error searching chunks: {e}")
-            return []
+_client: Client | None = None
 
 
-def get_supabase_service():
-    """Get Supabase service singleton"""
-    return SupabaseService()
+def init_supabase() -> None:
+    """Initialise the Supabase client. Call once at startup."""
+    global _client
+    settings = get_settings()
+
+    if not settings.supabase_url:
+        raise RuntimeError("SUPABASE_URL must be set in .env")
+
+    # Use service role key for backend (bypasses RLS)
+    # Falls back to anon key if service role not set
+    key = settings.supabase_service_role_key or settings.supabase_key
+    if not key:
+        raise RuntimeError("SUPABASE_SERVICE_ROLE_KEY or SUPABASE_KEY must be set in .env")
+
+    _client = create_client(settings.supabase_url, key)
+
+    key_type = "service_role" if settings.supabase_service_role_key else "anon"
+    logger.info("Supabase client initialised (key type: %s, project: %s...)", key_type, settings.supabase_url[:40])
+
+
+def get_supabase_client() -> Client:
+    """Return the singleton Supabase client. Raises if not initialised."""
+    if _client is None:
+        raise RuntimeError("Supabase not initialised. Call init_supabase() first (done at startup).")
+    return _client

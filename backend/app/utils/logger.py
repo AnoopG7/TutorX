@@ -1,12 +1,13 @@
-import logging
-import sys
+"""
+Logger utilities.
 
-# Configure logging
-logger = logging.getLogger(__name__)
-handler = logging.StreamHandler(sys.stdout)
-formatter = logging.Formatter(
-    '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-handler.setFormatter(formatter)
-logger.addHandler(handler)
-logger.setLevel(logging.INFO)
+NOTE: Root logging is configured in main.py via logging.basicConfig().
+This module provides a helper to get correctly-named loggers.
+Do NOT add handlers here — it conflicts with basicConfig.
+"""
+import logging
+
+
+def get_logger(name: str) -> logging.Logger:
+    """Get a named logger. Use __name__ as the argument."""
+    return logging.getLogger(name)

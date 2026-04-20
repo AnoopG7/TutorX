@@ -1,30 +1,38 @@
 from pydantic_settings import BaseSettings
 from functools import lru_cache
-import os
 
 
 class Settings(BaseSettings):
-    """Application configuration from environment variables"""
-    
+    """Application configuration from environment variables.
+
+    pydantic-settings automatically reads from env vars and .env file —
+    no manual os.getenv() needed.
+    """
+
     # Supabase
-    supabase_url: str = os.getenv("SUPABASE_URL", "")
-    supabase_key: str = os.getenv("SUPABASE_KEY", "")
-    supabase_service_role_key: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
-    
+    supabase_url: str = ""
+    supabase_key: str = ""
+    supabase_service_role_key: str = ""
+
     # Groq
-    groq_api_key: str = os.getenv("GROQ_API_KEY", "")
-    
+    groq_api_key: str = ""
+    groq_model: str = "llama-3.3-70b-versatile"
+
     # Telegram
-    telegram_token: str = os.getenv("TELEGRAM_TOKEN", "")
-    telegram_webhook_url: str = os.getenv("TELEGRAM_WEBHOOK_URL", "")
-    
+    telegram_token: str = ""
+    telegram_webhook_url: str = ""
+
     # CORS
-    cors_origins: list = ["http://localhost:3000", "http://localhost:5173", "https://*.vercel.app"]
-    
+    cors_origins: list = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "https://*.vercel.app",
+    ]
+
     # Environment
-    environment: str = os.getenv("ENVIRONMENT", "development")
-    debug: bool = os.getenv("DEBUG", "true").lower() == "true"
-    
+    environment: str = "development"
+    debug: bool = True
+
     class Config:
         env_file = ".env"
         case_sensitive = False
@@ -32,5 +40,5 @@ class Settings(BaseSettings):
 
 @lru_cache()
 def get_settings():
-    """Get cached settings instance"""
+    """Get cached settings instance."""
     return Settings()

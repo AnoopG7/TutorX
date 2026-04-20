@@ -1,91 +1,150 @@
-# CBSE Study Agent - Detailed Plan
+# CBSE Study Agent — Detailed Plan
 
 ## 1. Project Overview
-An intelligent tutoring system designed specifically for 9th and 10th grade CBSE (Central Board of Secondary Education) students. The agent serves as a personal tutor that explains concepts, answers questions, and helps students understand topics directly from CBSE textbooks.
+An intelligent tutoring agent designed specifically for 9th and 10th grade CBSE (Central Board of Secondary Education) students. Unlike a simple Q&A bot, the agent actively *teaches* — assessing the student's understanding, adapting its explanation style, checking comprehension, and remembering weak areas across sessions. It operates on a continuous Observe → Think → Act → Reflect loop rather than a one-shot question-answer pipeline.
 
 **Target Users:** 9th & 10th grade CBSE students
-**Primary Goal:** Enhance learning through personalized concept explanation and doubt resolution
+**Primary Goal:** Personalized, adaptive tutoring grounded in NCERT textbooks — not just answering questions, but ensuring the student *actually understands*
+**Agent Type:** RAG-powered tutoring agent with single-shot LLM generation
+**Framework:** LlamaIndex (embeddings) + Groq LLM (`llama-3.3-70b-versatile`) + Supabase (pgvector + auth + persistence)
 
 ---
 
-## 2. Core Features
+## 2. Agent Architecture
 
-### 2.1 Concept Explanation
-- **AI-powered topic breakdown:** Extract and explain concepts from CBSE textbooks in simple, student-friendly language
-- **Multi-level explanations:** Provide basic, intermediate, and advanced understanding levels
-- **Visual aids generation:** Create diagrams, flowcharts, and visual representations to aid understanding
-- **Example-based learning:** Provide relevant real-world examples for abstract concepts
-- **Subject coverage:** Science, Mathematics, Social Studies, English, and other CBSE subjects
+### 2.1 The Agent Loop
+Every interaction runs through this reasoning cycle — not a one-shot RAG call:
 
-### 2.2 Question Answering
-- **Direct textbook queries:** Answer questions sourced directly from textbook chapters
-- **Smart search:** Find relevant information across multiple chapters/subjects
-- **Answer verification:** Cross-reference answers with CBSE curriculum standards
-- **Citation tracking:** Show which textbook section/page the answer comes from
+```
+OBSERVE
+  ├─ Student's current message
+  ├─ Conversation history (this session)
+  ├─ Student profile (grade, weak areas, mastered topics, teaching style)
+  └─ Retrieved textbook context (RAG)
+        ↓
+THINK (LLM Reasoning Step)
+  ├─ What concept is the student struggling with?
+  ├─ How well do they understand it? (probe if unclear)
+  ├─ What teaching action is most appropriate right now?
+  └─ Is this a new topic or a follow-up?
+        ↓
+ACT (Tool Selection)
+  ├─ explain_concept()     → if student needs explanation
+  ├─ generate_quiz()       → if concept was explained, check understanding
+  ├─ check_answer()        → if student answered a quiz question
+  ├─ get_chapter_summary() → if student wants overview
+  ├─ suggest_next_topic()  → if student has finished a concept
+  └─ probe_understanding() → if the agent is unsure of student's level
+        ↓
+REFLECT
+  ├─ Did the student understand? (based on their response)
+  ├─ Update student profile: weak_areas, mastered_topics
+  └─ Decide: explain again differently / move on / quiz
+```
 
-### 2.3 Study Support
-- **Chapter summaries:** Generate concise summaries of chapters
-- **Question practice:** Provide chapter-end questions and model answers
-- **Doubt resolution:** Interactive Q&A for complex topics
-- **Concept mapping:** Show connections between related topics
-- **Exam preparation:** Help with previous year questions and important topics
+### 2.2 Agent Tools (Function Calling)
+The agent calls these discrete tools — never does everything in one LLM call:
 
-### 2.4 Personalization
-- **Learning pace tracking:** Adapt explanations based on student's comprehension level
-- **Progress monitoring:** Track which topics the student has studied
-- **Weak area identification:** Identify and focus on difficult topics
-- **Learning history:** Maintain conversation history for context
+| Tool | Input | Output | Notes |
+|------|-------|--------|-------|
+| `search_textbook` | query, subject, grade | Top 5 textbook chunks + citations | Core RAG tool |
+| `explain_concept` | concept, student_level, teaching_style | Structured explanation + example | Uses RAG context |
+| `probe_understanding` | concept, student_response | Assessment + follow-up question | Socratic check |
+| `generate_quiz` | topic, difficulty, num_questions | Quiz questions with answers | Practice mode |
+| `check_answer` | question, student_answer | Correct/incorrect + explanation | Instant feedback |
+| `get_chapter_summary` | chapter_id | Bullet-point summary | Quick overview |
+| `get_related_concepts` | topic | List of linked topics | Concept mapping |
+| `update_student_profile` | weak_areas, mastered_topics | Confirmation | Memory write |
+| `suggest_next_topic` | student_history, subject | Recommended next topic | Proactive guidance |
+
+### 2.3 Pedagogical Strategy
+The agent adapts its teaching style based on the student's profile and in-session responses:
+
+| Student State | Teaching Action |
+|---|---|
+| First time asking about a topic | Analogy → Core concept → Example → Quick check |
+| Struggling (wrong answers / confused) | Simplify → Different analogy → Break into smaller steps |
+| Getting it right | Deepen → Harder example → Edge cases → Quiz |
+| Advanced / fast learner | Socratic questioning → Guide to self-discover |
+| Exam preparation mode | Practice questions → Timed quiz → Weak area review |
+
+### 2.4 Core Features
+
+#### Concept Explanation
+- **AI-powered topic breakdown:** Retrieve and explain textbook concepts in student-friendly language
+- **Multi-level explanations:** Basic, intermediate, advanced — agent chooses based on student profile
+- **Example-based learning:** Real-world examples for abstract concepts
+- **Subject coverage:** Science, Mathematics, Social Studies, English (NCERT 9th & 10th)
+
+#### Question Answering
+- **Textbook-grounded answers:** Every answer cites the NCERT chapter/section it came from
+- **Citation tracking:** Page reference shown alongside answer
+- **Follow-up handling:** Agent remembers the last question — student can say "why?" without re-stating context
+
+#### Study Support
+- **Chapter summaries:** Concise, structured summaries of chapters
+- **Practice questions:** Chapter-end questions with model answers
+- **Exam prep mode:** Previous year questions, important topic weighting
+- **Concept mapping:** Show how topics connect across chapters
+
+#### Personalization & Memory
+- **Session memory:** Full conversation history within a session
+- **Cross-session memory:** Weak areas, mastered topics, quiz scores persist across sessions
+- **Weak area identification:** Agent proactively revisits topics the student struggled with
+- **Teaching style preference:** Stored per student (analogy-first / example-first / Socratic)
 
 ---
 
 ## 3. Technical Architecture
 
-### 3.1 Backend System - RAG Architecture
+### 3.1 Backend System - Agent + RAG Architecture
 ```
-Student Question
+Student Message
         ↓
 API Gateway (Supabase Auth)
         ↓
-RAG Pipeline (Groq Embeddings)
-    1. Generate embedding for question
-    2. Search Supabase pgvector for similar chunks
-    3. Retrieve top 5 most relevant textbook chunks
-        ↓
-Groq API (Mixtral 8x7B)
-    ├─ Receives: Question + Retrieved Chunks
-    ├─ Generates: Textbook-accurate answer
-    └─ Output: Answer + Citations
+LlamaIndex Agent (Agent Loop)
+    ├─ Load: session history + student profile from Supabase
+    ├─ THINK: Groq LLM decides which tool to call
+    ├─ ACT: Call tool (search_textbook / generate_quiz / etc.)
+    │       └─ search_textbook → pgvector similarity search
+    ├─ RESPOND: Format response with citations
+    └─ REFLECT: Update student profile (weak areas, mastered topics)
         ↓
 Supabase PostgreSQL
-    ├─ textbook_chunks table (with embeddings)
-    ├─ qa_cache table (frequently asked questions)
-    ├─ user_progress table (student tracking)
-    └─ conversations table (chat history)
+    ├─ textbook_chunks (with 768-dim embeddings)
+    ├─ qa_cache (frequently asked Q&A pairs)
+    ├─ student_profiles (weak areas, mastered topics, style)
+    └─ sessions (full conversation history)
         ↓
 Response to Student with Citations
 ```
 
-### 3.2 Data Pipeline - Supabase pgvector
-1. **Textbook Ingestion:** Convert CBSE PDFs into structured data
-2. **Parsing:** Extract chapters, sections, examples, questions
-3. **Chunking:** Split into 500-600 character chunks with overlap
-4. **Embedding Generation:** Use Groq API to generate 1536-dimensional embeddings
+### 3.2 Data Pipeline - NCERT Textbook Ingestion
+> **Copyright Note:** NCERT books are Government of India publications released for free public use. Confirm this for your specific use-case and document it.
+
+1. **Textbook Ingestion:** Admin downloads NCERT PDFs from ncert.nic.in (official, free)
+2. **Parsing:** Extract chapters, sections, examples, questions using `pdfplumber`
+3. **Chunking:** Split into 400-500 token chunks with 50-token overlap
+4. **Embedding Generation:** Use `nomic-embed-text` via Ollama (local, free, 768-dim)
 5. **Storage:** Insert chunks + embeddings into Supabase pgvector
 6. **Indexing:** Create IVFFlat index on Supabase for fast similarity search
-7. **Quality Control:** Manual verification of extraction accuracy
-8. **Caching:** Store frequently asked questions in qa_cache table
+7. **Quality Control:** Test with 20+ sample questions per chapter before going live
+8. **Caching:** Store Q&A pairs in qa_cache as students ask questions
 
 ### 3.3 Key Technologies
+- **Agent Framework:** LlamaIndex (agent loop + tool calling + RAG pipeline)
 - **Backend:** FastAPI/Python on Render (free tier)
 - **Frontend:** React + Vite on Vercel (free tier)
 - **Database:** Supabase PostgreSQL (500MB free tier) - all data centralized
-- **Vector Search:** Supabase pgvector - built-in, no additional cost
-- **LLM:** Groq API (Mixtral 8x7B) - unlimited free tier
+- **Vector Search:** Supabase pgvector (built-in, no extra cost)
+- **Embeddings:** `nomic-embed-text` via Ollama — **768-dimensional, free, runs locally during ingestion**
+- **LLM:** Groq API (Mixtral 8x7B) — unlimited free tier for reasoning
 - **Authentication:** Supabase Auth (included, battle-tested)
-- **Email:** AWS SES - 62K emails/month free
-- **Real-time:** python-socketio (runs on Render)
-- **Telegram Bot:** Telegram Bot API (free)
-- **File Storage:** Supabase Storage (500MB free) - for study materials, progress notes
+- **Telegram Bot:** Telegram Bot API (free) — quick question interface
+- **File Storage:** Supabase Storage (500MB free) — for study notes, progress exports
+
+> ⚠️ **Important:** Groq does NOT provide embedding models directly. All embeddings use `nomic-embed-text`. Do not confuse Groq (LLM inference) with embedding generation.
 
 ---
 
@@ -132,8 +191,8 @@ CREATE TABLE textbook_chunks (
   section VARCHAR(255),           -- "1.2 Types of Reactions"
   subject VARCHAR(100),           -- "Science", "Mathematics", etc
   grade INTEGER,                  -- 9 or 10
-  content TEXT NOT NULL,          -- 500-600 character chunk
-  embedding vector(1536),         -- Generated via Groq API
+  content TEXT NOT NULL,          -- 400-500 token chunk
+  embedding vector(768),          -- nomic-embed-text (768-dim, NOT Groq)
   chunk_index INTEGER,            -- Sequential position in chapter
   page_reference VARCHAR(50),     -- "Page 12"
   is_verified BOOLEAN DEFAULT FALSE,
@@ -149,11 +208,34 @@ ON textbook_chunks USING ivfflat (embedding vector_cosine_ops);
 CREATE TABLE qa_cache (
   id BIGSERIAL PRIMARY KEY,
   question TEXT,
-  question_embedding vector(1536),
+  question_embedding vector(768),  -- nomic-embed-text
   answer TEXT,
   citations JSONB,
-  hits INTEGER DEFAULT 0,         -- How many times asked
+  hits INTEGER DEFAULT 0,          -- How many times asked
   created_at TIMESTAMP
+);
+
+-- Student memory: persists across sessions
+CREATE TABLE student_profiles (
+  profile_id BIGSERIAL PRIMARY KEY,
+  user_id UUID REFERENCES auth.users,
+  grade INTEGER,
+  teaching_style VARCHAR(50) DEFAULT 'analogy_first',  -- 'analogy_first' | 'example_first' | 'socratic'
+  weak_areas JSONB DEFAULT '[]',       -- [{"topic": "photosynthesis", "score": 0.4}]
+  mastered_topics JSONB DEFAULT '[]',  -- ["oxidation", "reduction"]
+  quiz_history JSONB DEFAULT '[]',     -- [{"topic", "score", "date"}]
+  total_sessions INTEGER DEFAULT 0,
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Session history (conversation memory within + across sessions)
+CREATE TABLE sessions (
+  session_id BIGSERIAL PRIMARY KEY,
+  user_id UUID REFERENCES auth.users,
+  messages JSONB NOT NULL DEFAULT '[]',  -- [{role, content, tool_calls, timestamp}]
+  subject VARCHAR(100),
+  started_at TIMESTAMP DEFAULT NOW(),
+  ended_at TIMESTAMP
 );
 ```
 
@@ -241,14 +323,28 @@ CREATE TABLE qa_cache (
 - Clarity and comprehensiveness checks
 
 ### 8.3 Testing Strategy
-- Unit tests for core modules
+- Unit tests for all agent tools (`search_textbook`, `generate_quiz`, `check_answer`, etc.)
 - Integration tests for RAG pipeline:
-  - Test Supabase pgvector similarity search accuracy
-  - Verify Groq API embedding generation
-  - Test citation accuracy and relevance
-  - Measure query response time (<2 seconds target)
+  - Test Supabase pgvector similarity search accuracy (cosine similarity threshold)
+  - Test citation accuracy and relevance against known textbook passages
+  - Measure query response time (< 2 seconds target)
+- Agent loop tests: does the agent correctly choose the right tool for each student state?
 - User acceptance testing with real students
-- Performance testing for response time and vector search precision (>90% target)
+- Performance testing for response time and vector search precision (> 90% target)
+
+### 8.4 Evaluation Framework (Evals)
+Add an `evals/` directory from day one. Without evals, you can't know if a prompt change made the agent better or worse.
+
+```
+evals/
+  golden_dataset.json        # 50+ {question, expected_answer, citation} pairs
+  eval_retrieval.py          # Tests RAG retrieval quality (hit rate, MRR)
+  eval_answer_quality.py     # LLM-as-judge: is the answer accurate + age-appropriate?
+  eval_agent_loop.py         # Does agent pick the right tool for each scenario?
+  run_evals.sh               # Run all evals, output score report
+```
+
+Use **RAGAS** metrics for RAG evaluation: faithfulness, answer relevancy, context precision.
 
 ---
 
@@ -260,19 +356,19 @@ CREATE TABLE qa_cache (
 - Plain text documents
 
 ### 9.2 Upload Process - RAG Pipeline
-1. Admin uploads textbook PDF to Supabase Storage
-2. Automatic extraction of chapters/sections using pdf-parse
-3. Manual verification of extraction accuracy
-4. **Chunking:** Split into 500-600 character chunks with 100 char overlap
+1. Admin downloads NCERT PDFs from ncert.nic.in (free, official)
+2. Run ingestion script: extracts chapters/sections using `pdfplumber`
+3. Manual spot-check of extraction accuracy (compare 5-10 pages to source)
+4. **Chunking:** Split into 400-500 token chunks with 50-token overlap
 5. **Embedding Generation:** For each chunk:
-   - Call Groq Embedding API
-   - Generate 1536-dimensional embedding
-   - Cost: $0 (free tier unlimited)
+   - Run `nomic-embed-text` via Ollama locally
+   - Generate **768-dimensional** embedding
+   - Cost: $0 (runs locally, no API)
 6. **Storage:** Insert into Supabase pgvector with metadata
 7. **Indexing:** Create IVFFlat index for similarity search
-8. **Verification:** Test with 20+ sample questions
+8. **Verification:** Run eval suite against 20+ sample questions per chapter
 9. Quality checks and manual review before going live
-10. Cache is automatically built as students ask questions
+10. QA cache is automatically populated as students ask questions
 
 ### 9.3 Supported CBSE Books (10th Grade - Example)
 - **Science:** Physics, Chemistry, Biology (NCERT)
@@ -319,17 +415,41 @@ CREATE TABLE qa_cache (
 
 ## 12. Dependencies & Requirements
 
-### 12.1 External APIs (All FREE Tier)
-- **Groq API:** LLM (Mixtral 8x7B) + Embeddings - Unlimited free tier
-- **Supabase:** PostgreSQL with pgvector - 500MB free tier included
-- **AWS SES:** Email service - 62,000 emails/month free
-- **No separate vector database needed:** pgvector built into PostgreSQL
+### 12.1 External APIs & Libraries (All FREE Tier)
+- **Groq API:** LLM inference (Mixtral 8x7B) — Unlimited free tier
+- **Supabase:** PostgreSQL with pgvector — 500MB free tier
+- **Ollama + nomic-embed-text:** Local embedding generation — free, no API key needed
+- **LlamaIndex:** Agent framework + RAG pipeline — open source, free
+- **Telegram Bot API:** Quick question interface — free
+- **No embedded LLM from Groq:** Groq is for generation only, not embeddings
 
-### 12.2 Infrastructure
-- Cloud hosting (AWS, GCP, Azure)
-- CDN for content delivery
-- Email/notification service
-- Analytics platform
+### 12.2 Project Directory Structure
+```
+cbse-study-agent/
+  backend/
+    agent/
+      loop.py          # Main agent reasoning loop
+      tools.py         # All tool definitions (search_textbook, quiz, etc.)
+      memory.py        # Student profile read/write
+    rag/
+      ingest.py        # PDF → chunks → embeddings pipeline
+      retriever.py     # pgvector similarity search
+    prompts/
+      system_prompt_v1.txt    # Versioned system prompt
+      explain_template_v1.txt # Explanation template
+    evals/
+      golden_dataset.json     # Test Q&A pairs
+      eval_retrieval.py
+      eval_answer_quality.py
+      eval_agent_loop.py
+  frontend/
+  docs/
+```
+
+### 12.3 Infrastructure
+- **Backend:** Render (FastAPI, free tier)
+- **Frontend:** Vercel (React + Vite, free tier)
+- **Database:** Supabase (PostgreSQL + pgvector + Auth + Storage)
 
 ### 12.3 Legal & Compliance
 - CBSE textbook rights verification

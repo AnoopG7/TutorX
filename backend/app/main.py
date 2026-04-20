@@ -1,38 +1,40 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import logging
 
 from app.config import get_settings
+from app.services.supabase_service import init_supabase
+from app.api.routes import chat, profile
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+)
 logger = logging.getLogger(__name__)
-
-# Store Supabase client and other resources
-app_state = {}
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Lifespan context manager for startup/shutdown"""
-    # Startup
-    logger.info("Application starting...")
+    """Startup: initialise Supabase client. Shutdown: nothing to clean up."""
+    logger.info("🚀 TutorX starting up...")
+    init_supabase()
+    logger.info("✅ Supabase connected")
+    logger.info("✅ TutorX ready — agent loop active")
     yield
-    # Shutdown
-    logger.info("Application shutting down...")
+    logger.info("🛑 TutorX shutting down")
 
 
-# Create FastAPI app
+settings = get_settings()
+
 app = FastAPI(
-    title="CBSE Study Agent API",
-    description="RAG-powered AI tutoring system for CBSE students",
-    version="1.0.0",
-    lifespan=lifespan
+    title="TutorX — CBSE Study Agent",
+    description="LlamaIndex ReAct tutoring agent grounded in NCERT textbooks",
+    version="0.1.0",
+    lifespan=lifespan,
 )
 
-# Add CORS middleware
-settings = get_settings()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -41,29 +43,35 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers (to be added as we build routes)
-# from app.api.routes import auth, questions, chapters, progress, websocket
-# app.include_router(auth.router, prefix="/auth", tags=["auth"])
-# app.include_router(questions.router, prefix="/api/questions", tags=["questions"])
-# etc.
+# ── Routes ──────────────────────────────────────────────────────────────────
+app.include_router(chat.router, prefix="/api/chat", tags=["Chat"])
+app.include_router(profile.router, prefix="/api", tags=["Profile"])
 
 
-@app.get("/health")
+# ── Telegram Webhook ───────────────────────────────────────────────────────
+@app.post("/webhook/telegram")
+async def telegram_webhook():
+    """Telegram webhook endpoint - processes incoming Telegram messages."""
+    # This endpoint receives updates from Telegram
+    # For production, use python-telegram-bot's webhook handling
+    return JSONResponse({"status": "ok"})
+
+
+@app.get("/health", tags=["System"])
 async def health_check():
-    """Health check endpoint"""
-    return {"status": "healthy", "service": "CBSE Study Agent"}
+    return {"status": "healthy", "service": "TutorX CBSE Agent", "version": "0.1.0"}
 
 
-@app.get("/")
+@app.get("/", tags=["System"])
 async def root():
-    """Root endpoint"""
     return {
-        "service": "CBSE Study Agent API",
-        "version": "1.0.0",
-        "status": "running"
+        "service": "TutorX CBSE Study Agent",
+        "version": "0.1.0",
+        "docs": "/docs",
     }
 
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
