@@ -8,30 +8,23 @@ import { ChatInterface, type Message } from '@/components/chat/ChatInterface';
 import { apiClient } from '@/lib/api';
 import { nanoid } from 'nanoid';
 
-interface StoredSession {
-  id: string;
-  subject: string;
-  chapter: string;
-  timestamp: number;
-  messageCount: number;
-  messages?: Message[];
-}
-
 export default function ChatPage() {
   const { user } = useAuth();
   const userId = user?.user_id;
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
+  const [hasLoadedHistory, setHasLoadedHistory] = useState(false);
   const [sessionId, setSessionId] = useState<string>(() => {
     // Get session from URL or create new one
     const params = new URLSearchParams(window.location.search);
     return params.get('session') || '';
   });
 
-  // Load messages from backend when session ID changes
+  // Load messages from backend when session ID changes (only once per session)
   useEffect(() => {
-    if (sessionId && userId) {
+    if (sessionId && userId && !hasLoadedHistory) {
       loadSessionHistory();
+      setHasLoadedHistory(true);
     }
   }, [sessionId, userId]);
 
@@ -39,7 +32,6 @@ export default function ChatPage() {
     if (!sessionId || !userId) return;
 
     try {
-      setLoading(true);
       const response = await apiClient.getSessionHistory(userId, sessionId);
 
       // Convert API response format to Message format
@@ -54,8 +46,6 @@ export default function ChatPage() {
     } catch (error) {
       console.error('Failed to load session history:', error);
       setMessages([]);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -73,57 +63,33 @@ export default function ChatPage() {
     setLoading(true);
 
     try {
-      // Send to backend
+      // Send to backend - let backend create session if needed
       const response = await apiClient.chat({
         user_id: userId,
         message: userMessage,
+        session_id: sessionId || undefined, // Pass sessionId if we have one
       });
+
+      // If we got a new session_id from backend, store it
+      if (response.session_id && !sessionId) {
+        setSessionId(response.session_id);
+        // Update URL to reflect the session
+        window.history.replaceState({}, '', `/chat?session=${response.session_id}`);
+      }
 
       // Add assistant message
       const assistantMsg: Message = {
         id: nanoid(),
         role: 'assistant',
         content: response.response,
-        citations: response.citations?.map((c) => ({
-          chunk_id: c.chunk_id.toString(),
-          source: `${c.chapter}${c.section ? ` - ${c.section}` : ''}`,
-          score: 0, // Not provided by API
+        citations: response.citations?.map((c, idx) => ({
+          chunk_id: (idx + 1).toString(),
+          source: c,
+          score: 0,
         })),
       };
 
-      setMessages((prev) => {
-        const updated = [...prev, assistantMsg];
-
-        // TODO: Backend should persist this conversation to Supabase
-        // API call needed: POST /api/sessions/{sessionId}/messages or similar
-        // For now, only store session metadata in localStorage for UI display
-        const currentSessionId = sessionId || nanoid();
-        if (!sessionId) setSessionId(currentSessionId);
-
-        const sessions: StoredSession[] = (() => {
-          const stored = localStorage.getItem('chat_sessions');
-          return stored ? JSON.parse(stored) : [];
-        })();
-
-        const sessionIndex = sessions.findIndex((s) => s.id === currentSessionId);
-        const newSession: StoredSession = {
-          id: currentSessionId,
-          subject: 'General',
-          chapter: `Chat - ${new Date().toLocaleDateString()}`,
-          timestamp: Date.now(),
-          messageCount: updated.length,
-          // Don't store messages here - fetch from backend instead
-        };
-
-        if (sessionIndex >= 0) {
-          sessions[sessionIndex] = newSession;
-        } else {
-          sessions.unshift(newSession);
-        }
-
-        localStorage.setItem('chat_sessions', JSON.stringify(sessions.slice(0, 10)));
-        return updated;
-      });
+      setMessages((prev) => [...prev, assistantMsg]);
     } catch (error) {
       console.error('Failed to send message:', error);
 
@@ -141,12 +107,12 @@ export default function ChatPage() {
   };
 
   return (
-    <div className="flex flex-col h-full -mx-8 -my-6 bg-background">
+    <div className="flex flex-col flex-1 w-full h-full overflow-hidden">
       <ChatInterface
         messages={messages}
         onSendMessage={handleSendMessage}
         loading={loading}
-        disabled={loading}
+        disabled={false}
       />
     </div>
   );

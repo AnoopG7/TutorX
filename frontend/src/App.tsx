@@ -1,14 +1,13 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { ThemeProvider } from '@/providers/ThemeProvider';
 import { AuthProvider } from '@/providers/AuthProvider';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
-import { PageShell } from '@/components/layout/PageShell';
+import { Navbar } from '@/components/layout/Navbar';
 import HomePage from '@/pages/HomePage';
 import LoginPage from '@/pages/LoginPage';
 import SignupPage from '@/pages/SignupPage';
 import DashboardPage from '@/pages/DashboardPage';
 import ChatPage from '@/pages/ChatPage';
-import ProgressPage from '@/pages/ProgressPage';
 import SettingsPage from '@/pages/SettingsPage';
 
 function App() {
@@ -26,13 +25,17 @@ function App() {
             <Route
               element={
                 <ProtectedRoute>
-                  <PageShell />
+                  <div className="flex flex-col min-h-screen bg-background">
+                    <Navbar />
+                    <main className="flex-1 flex flex-col overflow-hidden">
+                      <Outlet />
+                    </main>
+                  </div>
                 </ProtectedRoute>
               }
             >
               <Route path="/" element={<DashboardPage />} />
               <Route path="/chat" element={<ChatPage />} />
-              <Route path="/progress" element={<ProgressPage />} />
               <Route path="/settings" element={<SettingsPage />} />
             </Route>
 

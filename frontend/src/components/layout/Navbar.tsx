@@ -2,17 +2,17 @@
  * Navbar — Top navigation bar with logo, links, and theme toggle
  */
 
-import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Sun, Moon, Menu, LogOut } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { useThemeContext } from '@/providers/ThemeProvider';
-import { useAuth } from '@/providers/AuthProvider';
+import { useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Sun, Moon, Menu, X, LogOut } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useThemeContext } from "@/providers/ThemeProvider";
+import { useAuth } from "@/providers/AuthProvider";
 
 const navLinks = [
-  { href: '/', label: 'Dashboard' },
-  { href: '/chat', label: 'Chat' },
-  { href: '/progress', label: 'Progress' },
-  { href: '/settings', label: 'Settings' },
+  { href: "/", label: "Dashboard" },
+  { href: "/chat", label: "Chat" },
+  { href: "/settings", label: "Settings" },
 ];
 
 export function Navbar() {
@@ -20,10 +20,12 @@ export function Navbar() {
   const navigate = useNavigate();
   const { resolvedTheme, toggleTheme } = useThemeContext();
   const { user, logout } = useAuth();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handleLogout = () => {
     logout();
-    navigate('/home');
+    navigate("/home");
+    setMobileMenuOpen(false);
   };
 
   return (
@@ -33,7 +35,9 @@ export function Navbar() {
           {/* Logo */}
           <Link to="/" className="flex shrink-0 items-center gap-2">
             <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-violet-500 to-amber-500" />
-            <span className="font-semibold text-lg hidden sm:inline">CBSE Study</span>
+            <span className="font-semibold text-lg hidden sm:inline">
+              CBSE Study
+            </span>
           </Link>
 
           {/* Nav Links - Desktop */}
@@ -44,8 +48,8 @@ export function Navbar() {
                 to={link.href}
                 className={`text-sm font-medium transition-colors ${
                   location.pathname === link.href
-                    ? 'text-primary'
-                    : 'text-muted-foreground hover:text-foreground'
+                    ? "text-primary"
+                    : "text-muted-foreground hover:text-foreground"
                 }`}
               >
                 {link.label}
@@ -58,15 +62,25 @@ export function Navbar() {
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => toggleTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
+              onClick={() =>
+                toggleTheme(resolvedTheme === "dark" ? "light" : "dark")
+              }
               title="Toggle theme"
             >
-              {resolvedTheme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              {resolvedTheme === "dark" ? (
+                <Sun className="h-4 w-4" />
+              ) : (
+                <Moon className="h-4 w-4" />
+              )}
             </Button>
 
             {user && (
               <>
-                <Button variant="ghost" size="sm" className="hidden sm:inline-flex">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="hidden sm:inline-flex"
+                >
                   {user.name}
                 </Button>
 
@@ -75,7 +89,7 @@ export function Navbar() {
                   size="icon"
                   onClick={handleLogout}
                   title="Logout"
-                  className="text-muted-foreground hover:text-foreground"
+                  className="text-muted-foreground hover:text-foreground hidden md:flex"
                 >
                   <LogOut className="h-4 w-4" />
                 </Button>
@@ -83,11 +97,47 @@ export function Navbar() {
             )}
 
             {/* Mobile Menu Trigger */}
-            <Button variant="ghost" size="icon" className="md:hidden" title="Menu">
-              <Menu className="h-4 w-4" />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="md:hidden"
+              title="Menu"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            >
+              {mobileMenuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
             </Button>
           </div>
         </div>
+
+        {/* Mobile Menu */}
+        {mobileMenuOpen && (
+          <div className="md:hidden py-4 border-t border-border">
+            <div className="flex flex-col gap-2">
+              {navLinks.map((link) => (
+                <Link
+                  key={link.href}
+                  to={link.href}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                    location.pathname === link.href
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                  }`}
+                >
+                  {link.label}
+                </Link>
+              ))}
+              {user && (
+                <button
+                  onClick={handleLogout}
+                  className="mt-2 px-3 py-2 rounded-md text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted text-left"
+                >
+                  Logout
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </nav>
   );

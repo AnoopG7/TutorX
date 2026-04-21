@@ -11,7 +11,7 @@ The backend handles this with try/except — profile creation may fail silently.
 """
 import logging
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 from postgrest.exceptions import APIError
 from app.services.supabase_service import get_supabase_client
 
@@ -51,7 +51,7 @@ async def update_student_profile(
     Call this at the end of every REFLECT step.
     """
     client  = get_supabase_client()
-    payload: dict = {"updated_at": datetime.utcnow().isoformat()}
+    payload: dict = {"updated_at": datetime.now(timezone.utc).isoformat()}
 
     if weak_areas is not None:
         payload["weak_areas"] = weak_areas
@@ -71,18 +71,40 @@ async def append_quiz_result(user_id: str, topic: str, score: float) -> None:
         return
 
     history: list = profile.get("quiz_history") or []
-    history.append({"topic": topic, "score": score, "date": datetime.utcnow().isoformat()})
+    history.append({"topic": topic, "score": score, "date": datetime.now(timezone.utc).isoformat()})
     # Keep last 50 quiz entries
     history = history[-50:]
 
     get_supabase_client().table("student_profiles").update(
-        {"quiz_history": history, "updated_at": datetime.utcnow().isoformat()}
+        {"quiz_history": history, "updated_at": datetime.now(timezone.utc).isoformat()}
     ).eq("user_id", user_id).execute()
 
 
 # ---------------------------------------------------------------------------
 # Sessions (Conversation history — the agent's short-term memory)
 # ---------------------------------------------------------------------------
+
+async def create_new_session(
+    user_id: str,
+    subject: str | None = None,
+    chapter: str | None = None,
+) -> dict:
+    """
+    Always create a brand new session. Never reuse.
+    Title starts as 'New conversation' and gets updated after the first exchange.
+    """
+    client = get_supabase_client()
+
+    new_session = {
+        "user_id":  user_id,
+        "subject":  subject,
+        "chapter":  chapter,
+        "messages": [],
+        "title":    "New conversation",
+    }
+    created = client.table("sessions").insert(new_session).execute()
+    return created.data[0]
+
 
 async def get_or_create_session(
     user_id: str,
@@ -115,7 +137,7 @@ async def get_or_create_session(
         "subject":  subject,
         "chapter":  chapter,
         "messages": [],
-        "title":    f"{subject or 'Study'} session — {datetime.utcnow().strftime('%d %b')}",
+        "title":    "New conversation",
     }
     created = client.table("sessions").insert(new_session).execute()
     return created.data[0]
@@ -139,7 +161,7 @@ async def append_message(
     entry: dict = {
         "role":      role,
         "content":   content,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     if tool_name:
         entry["tool_name"]  = tool_name
@@ -150,7 +172,7 @@ async def append_message(
     messages = messages[-50:]  # Sliding window
 
     client.table("sessions").update(
-        {"messages": messages, "updated_at": datetime.utcnow().isoformat()}
+        {"messages": messages, "updated_at": datetime.now(timezone.utc).isoformat()}
     ).eq("id", session_id).execute()
 
 
@@ -164,5 +186,32 @@ async def get_session_history(session_id: str) -> list[dict]:
 async def close_session(session_id: str) -> None:
     """Mark a session as ended."""
     get_supabase_client().table("sessions").update(
-        {"ended_at": datetime.utcnow().isoformat()}
+        {"ended_at": datetime.now(timezone.utc).isoformat()}
     ).eq("id", session_id).execute()
+
+
+async def update_session_title(session_id: str, user_message: str) -> None:
+    """
+    Generate a short, descriptive title from the user's first message.
+    Like ChatGPT/Claude — e.g. 'Photosynthesis in plants' instead of 'Study session'.
+    """
+    # Simple extraction: use the first message directly, trimmed to ~60 chars
+    title = user_message.strip()
+
+    # Clean up: remove question marks, capitalize first letter
+    title = title.rstrip('?').strip()
+    if len(title) > 60:
+        # Find a natural break point
+        title = title[:57].rsplit(' ', 1)[0] + '...'
+    if title:
+        title = title[0].upper() + title[1:]
+    else:
+        title = 'New conversation'
+
+    try:
+        get_supabase_client().table("sessions").update(
+            {"title": title}
+        ).eq("id", session_id).execute()
+        logger.info("Updated session title to: %s", title)
+    except Exception as e:
+        logger.warning("Failed to update session title: %s", e)

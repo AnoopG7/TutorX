@@ -19,6 +19,8 @@ export interface Session {
   subject: string | null;
   chapter: string | null;
   ended_at: string | null;
+  started_at: string;
+  updated_at: string;
   created_at: string;
 }
 
@@ -31,11 +33,12 @@ export interface ChatRequest {
   message: string;
   subject?: string;
   chapter?: string;
+  session_id?: string;
 }
 
 export interface ChatResponse {
   response: string;
-  citations?: Array<{ chunk_id: number; chapter: string; section?: string; page?: string }>;
+  citations?: string[];
   session_id: string;
   tools_used?: string[];
 }
@@ -66,6 +69,14 @@ export interface AuthResponse {
   token: string;
   user_id: string;
   name: string;
+}
+
+export interface SignupResponse {
+  status: 'confirm_email' | 'logged_in';
+  message: string;
+  user_id: string | null;
+  token: string | null;
+  name: string | null;
 }
 
 export class APIError extends Error {
@@ -141,29 +152,20 @@ class APIClient {
     return headers;
   }
 
-  async signup(req: SignupRequest): Promise<AuthResponse> {
-    console.log('🔍 [Frontend] Signup request:', {
-      email: req.email,
-      name: req.name,
-      password: '••••••••••',
-      url: `${this.baseURL}/auth/signup`
-    });
-
+  async signup(req: SignupRequest): Promise<SignupResponse> {
     const response = await fetch(`${this.baseURL}/auth/signup`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(req),
     });
 
-    const result = await this.handleResponse<AuthResponse>(response);
+    const result = await this.handleResponse<SignupResponse>(response);
 
-    console.log('✅ [Frontend] Signup success:', {
-      user_id: result.user_id,
-      name: result.name,
-      token: result.token ? result.token.substring(0, 20) + '...' : 'none'
-    });
+    // Only set token if auto-confirmed (no email verification needed)
+    if (result.status === 'logged_in' && result.token) {
+      this.setAuthToken(result.token);
+    }
 
-    this.setAuthToken(result.token);
     return result;
   }
 

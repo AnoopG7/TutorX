@@ -83,11 +83,12 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="min-h-screen w-screen flex flex-col items-center justify-center bg-background p-4 space-y-8">
-      <div className="text-center space-y-2">
-        <h1 className="text-4xl font-bold text-foreground">Settings</h1>
-        <p className="text-muted-foreground">Customize your learning experience</p>
-      </div>
+    <div className="min-h-screen bg-background p-4 sm:p-8">
+      <div className="mx-auto max-w-2xl space-y-8">
+        <div className="text-center space-y-2">
+          <h1 className="text-4xl font-bold text-foreground">Settings</h1>
+          <p className="text-muted-foreground">Customize your learning experience</p>
+        </div>
 
         {/* Feedback Message */}
         {feedback && (
@@ -116,7 +117,7 @@ export default function SettingsPage() {
         )}
 
         {/* Form Container */}
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-8 pb-12">
           {/* Profile Section */}
           <div className="rounded-xl border border-border bg-card p-8 space-y-6">
             <div>
@@ -141,7 +142,7 @@ export default function SettingsPage() {
               {/* Grade Select */}
               <FormSelect
                 label="Grade"
-                options={[9, 10, 11, 12].map((g) => ({
+                options={[9, 10].map((g) => ({
                   value: g,
                   label: `Grade ${g}`,
                 }))}
@@ -337,6 +338,7 @@ export default function SettingsPage() {
             </div>
           </div>
         </form>
+      </div>
     </div>
   );
 }

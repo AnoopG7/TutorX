@@ -26,6 +26,7 @@ class ChatRequest(BaseModel):
     message:  str            = Field(..., min_length=1, max_length=2000)
     subject:  Optional[str]  = Field(None, description="e.g. 'Science', 'Mathematics'")
     chapter:  Optional[str]  = Field(None, description="e.g. 'Chapter 1: Chemical Reactions'")
+    session_id: Optional[str] = Field(None, description="Session ID — if not provided, creates a new session")
 
 
 class ChatResponse(BaseModel):
@@ -84,6 +85,7 @@ async def chat(
         message = req.message.strip(),
         subject = req.subject,
         chapter = req.chapter,
+        session_id = req.session_id,
     )
     return ChatResponse(**result)
 
@@ -94,13 +96,26 @@ async def list_sessions(user_id: str, limit: int = 10):
     client = get_supabase_client()
     res = (
         client.table("sessions")
-        .select("id, title, subject, chapter, started_at, updated_at")
+        .select("id, title, subject, chapter, started_at, ended_at")
         .eq("user_id", user_id)
         .order("started_at", desc=True)
         .limit(limit)
         .execute()
     )
-    return {"sessions": res.data or []}
+
+    # Map backend field names to frontend expectations
+    sessions = []
+    for session in (res.data or []):
+        sessions.append({
+            "id": session.get("id"),
+            "title": session.get("title"),
+            "subject": session.get("subject"),
+            "chapter": session.get("chapter"),
+            "created_at": session.get("started_at"),
+            "ended_at": session.get("ended_at"),
+        })
+
+    return {"sessions": sessions}
 
 
 @router.get("/sessions/{user_id}/{session_id}/history")

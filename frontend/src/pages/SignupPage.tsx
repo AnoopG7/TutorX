@@ -1,18 +1,19 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/providers/AuthProvider';
 import { APIError } from '@/lib/api';
-import { AlertCircle, CheckCircle, Loader2 } from 'lucide-react';
+import { AlertCircle, CheckCircle, Loader2, Mail } from 'lucide-react';
 
 export default function SignupPage() {
+  const navigate = useNavigate();
   const { signup, loading: authLoading } = useAuth();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
 
   const validateForm = (): string | null => {
     if (!name.trim()) return 'Name is required';
@@ -27,7 +28,6 @@ export default function SignupPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setSuccess(false);
 
     const validationError = validateForm();
     if (validationError) {
@@ -38,14 +38,17 @@ export default function SignupPage() {
     setLoading(true);
 
     try {
-      await signup(email, password, name);
-      setSuccess(true);
-      
-      // Show message about email confirmation instead of redirecting immediately
-      // (Supabase requires email confirmation by default)
+      const result = await signup(email, password, name);
+
+      if (result.status === 'logged_in') {
+        // Auto-confirmed — go straight to dashboard
+        navigate('/');
+      } else {
+        // Email confirmation required — show success message
+        setEmailSent(true);
+      }
     } catch (err) {
       if (err instanceof APIError) {
-        // Parse Supabase error messages
         let message = err.detail || 'Signup failed';
         if (message.includes('already registered')) {
           message = 'This email is already registered. Try signing in instead.';
@@ -63,49 +66,79 @@ export default function SignupPage() {
     }
   };
 
+  // Email confirmation sent — show success state
+  if (emailSent) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-background to-muted flex items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          <div className="rounded-2xl border border-border bg-card shadow-lg p-8 text-center">
+            <div className="h-16 w-16 rounded-full bg-emerald-500/10 flex items-center justify-center mx-auto mb-4">
+              <Mail className="h-8 w-8 text-emerald-500" />
+            </div>
+            <h1 className="text-2xl font-bold text-foreground mb-2">Check your email</h1>
+            <p className="text-muted-foreground mb-2">
+              We've sent a confirmation link to
+            </p>
+            <p className="text-foreground font-medium mb-6">{email}</p>
+            <p className="text-sm text-muted-foreground mb-8">
+              Click the link in the email to verify your account, then come back to sign in.
+            </p>
+            <Link
+              to="/login"
+              className="inline-flex items-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground rounded-xl font-medium hover:opacity-90 transition-opacity"
+            >
+              <CheckCircle className="h-4 w-4" />
+              Go to Sign In
+            </Link>
+            <p className="text-xs text-muted-foreground mt-6">
+              Didn't receive the email? Check your spam folder or try signing up again.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-background to-muted flex items-center justify-center p-4">
       <div className="w-full max-w-md">
-        <div className="bg-white dark:bg-slate-900 rounded-lg shadow-lg p-8">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-foreground">Create Account</h1>
-            <p className="text-muted-foreground mt-2">Join CBSE Study Agent to start learning</p>
+        <div className="rounded-2xl border border-border bg-card shadow-lg p-8">
+          {/* Header */}
+          <div className="mb-8 text-center">
+            <Link to="/home" className="inline-flex items-center gap-2 mb-6">
+              <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-violet-500 to-amber-500" />
+              <span className="font-semibold text-lg">CBSE Study</span>
+            </Link>
+            <h1 className="text-2xl font-bold text-foreground">Create your account</h1>
+            <p className="text-muted-foreground mt-1 text-sm">Start learning with AI-powered tutoring</p>
           </div>
 
+          {/* Error */}
           {error && (
-            <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex gap-3">
-              <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
-              <p className="text-red-600 dark:text-red-400 text-sm">{error}</p>
+            <div className="mb-4 p-3 bg-destructive/10 border border-destructive/20 rounded-xl flex gap-3">
+              <AlertCircle className="h-4 w-4 text-destructive flex-shrink-0 mt-0.5" />
+              <p className="text-destructive text-sm">{error}</p>
             </div>
           )}
 
-          {success && (
-            <div className="mb-4 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg flex gap-3">
-              <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-green-600 dark:text-green-400 text-sm font-medium">Account created! Check your email to confirm.</p>
-                <p className="text-green-600 dark:text-green-400 text-xs mt-1">Click the confirmation link, then sign in.</p>
-              </div>
-            </div>
-          )}
-
+          {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">
+              <label className="block text-sm font-medium text-foreground mb-1.5">
                 Full Name
               </label>
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="John Doe"
-                className="w-full px-4 py-2 border border-input rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
-                disabled={loading || authLoading || success}
+                placeholder="Your name"
+                className="w-full px-4 py-2.5 border border-border rounded-xl bg-background text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors disabled:opacity-50"
+                disabled={loading || authLoading}
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">
+              <label className="block text-sm font-medium text-foreground mb-1.5">
                 Email Address
               </label>
               <input
@@ -113,13 +146,13 @@ export default function SignupPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
-                className="w-full px-4 py-2 border border-input rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
-                disabled={loading || authLoading || success}
+                className="w-full px-4 py-2.5 border border-border rounded-xl bg-background text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors disabled:opacity-50"
+                disabled={loading || authLoading}
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">
+              <label className="block text-sm font-medium text-foreground mb-1.5">
                 Password
               </label>
               <input
@@ -127,14 +160,14 @@ export default function SignupPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full px-4 py-2 border border-input rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
-                disabled={loading || authLoading || success}
+                className="w-full px-4 py-2.5 border border-border rounded-xl bg-background text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors disabled:opacity-50"
+                disabled={loading || authLoading}
               />
               <p className="text-xs text-muted-foreground mt-1">At least 8 characters</p>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">
+              <label className="block text-sm font-medium text-foreground mb-1.5">
                 Confirm Password
               </label>
               <input
@@ -142,25 +175,20 @@ export default function SignupPage() {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full px-4 py-2 border border-input rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
-                disabled={loading || authLoading || success}
+                className="w-full px-4 py-2.5 border border-border rounded-xl bg-background text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors disabled:opacity-50"
+                disabled={loading || authLoading}
               />
             </div>
 
             <button
               type="submit"
-              disabled={loading || authLoading || success}
-              className="w-full py-2 px-4 bg-primary text-primary-foreground rounded-lg font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity flex items-center justify-center gap-2"
+              disabled={loading || authLoading}
+              className="w-full py-2.5 px-4 bg-primary text-primary-foreground rounded-xl font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity flex items-center justify-center gap-2 mt-2"
             >
               {loading || authLoading ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Creating account...
-                </>
-              ) : success ? (
-                <>
-                  <CheckCircle className="h-4 w-4" />
-                  Check your email!
                 </>
               ) : (
                 'Create Account'
@@ -169,21 +197,13 @@ export default function SignupPage() {
           </form>
 
           <div className="mt-6 text-center">
-            <p className="text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               Already have an account?{' '}
               <Link to="/login" className="text-primary font-medium hover:underline">
                 Sign in
               </Link>
             </p>
           </div>
-        </div>
-
-        <div className="mt-6 p-6 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
-          <p className="text-sm text-green-600 dark:text-green-400">
-            <span className="font-medium">✓ Free to join</span>
-            <br />
-            No credit card required. Full access to study materials and AI tutoring.
-          </p>
         </div>
       </div>
     </div>

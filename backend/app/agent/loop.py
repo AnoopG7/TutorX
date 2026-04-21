@@ -13,9 +13,10 @@ from llama_index.core.llms import ChatMessage, MessageRole
 from llama_index.llms.groq import Groq
 from app.agent.memory import (
     get_student_profile,
-    get_or_create_session,
+    create_new_session,
     append_message,
     get_session_history,
+    update_session_title,
 )
 from app.config import get_settings
 from app.services.supabase_service import get_supabase_client
@@ -153,6 +154,7 @@ async def run_agent(
     message:  str,
     subject:  str | None = None,
     chapter:  str | None = None,
+    session_id: str | None = None,
 ) -> dict:
     """
     Main entry point. One Groq call per message — no agent loop.
@@ -168,12 +170,21 @@ async def run_agent(
     # ── 1. LOAD PROFILE & SESSION ────────────────────────────────────────────
     profile = await _get_or_create_profile(user_id)
 
-    session_id = None
+    retrieved_session_id = None
     history: list[dict] = []
     try:
-        session    = await get_or_create_session(user_id, subject=subject, chapter=chapter)
-        session_id = session["id"]
-        history    = await get_session_history(session_id)
+        if session_id:
+            # If session_id provided in request, use it (continuing an existing chat)
+            client = get_supabase_client()
+            session = client.table("sessions").select("*").eq("id", session_id).single().execute()
+            if session.data:
+                retrieved_session_id = session.data["id"]
+        else:
+            # No session_id provided: create a NEW session (never reuse an old one)
+            session = await create_new_session(user_id, subject=subject, chapter=chapter)
+            retrieved_session_id = session["id"]
+
+        history = await get_session_history(retrieved_session_id)
     except Exception as e:
         logger.warning("Session setup failed: %s — continuing without persistence", e)
 
@@ -190,9 +201,9 @@ async def run_agent(
         # Continue without context — LLM will use curriculum knowledge
 
     # ── 3. LOG USER MESSAGE ──────────────────────────────────────────────────
-    if session_id:
+    if retrieved_session_id:
         try:
-            await append_message(session_id, role="user", content=message)
+            await append_message(retrieved_session_id, role="user", content=message)
         except Exception:
             pass
 
@@ -211,15 +222,22 @@ async def run_agent(
         )
 
     # ── 5. LOG RESPONSE ──────────────────────────────────────────────────────
-    if session_id:
+    if retrieved_session_id:
         try:
-            await append_message(session_id, role="assistant", content=response_text)
+            await append_message(retrieved_session_id, role="assistant", content=response_text)
         except Exception:
             pass
 
+        # Auto-title new sessions from the first user message (like ChatGPT/Claude)
+        if not history:  # First message in this session
+            try:
+                await update_session_title(retrieved_session_id, message)
+            except Exception:
+                pass
+
     return {
         "response":   response_text,
-        "session_id": session_id,
+        "session_id": retrieved_session_id,
         "citations":  citations,
         "tools_used": ["rag_search"] if citations else [],
     }

@@ -1,9 +1,12 @@
 /**
  * AuthProvider — Manages auth state and provides auth methods
+ *
+ * Signup returns a SignupResponse which may require email confirmation.
+ * Login returns an AuthResponse with a JWT token.
  */
 
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
-import { apiClient, type AuthResponse } from '@/lib/api';
+import { apiClient, type AuthResponse, type SignupResponse } from '@/lib/api';
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -11,7 +14,7 @@ interface AuthContextType {
   loading: boolean;
   error: Error | null;
   login: (email: string, password: string) => Promise<void>;
-  signup: (email: string, password: string, name: string) => Promise<void>;
+  signup: (email: string, password: string, name: string) => Promise<SignupResponse>;
   logout: () => void;
 }
 
@@ -33,7 +36,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const parsed = JSON.parse(userData);
         setUser(parsed);
         setIsAuthenticated(true);
-      } catch (err) {
+      } catch {
         localStorage.removeItem('auth-token');
         localStorage.removeItem('auth-user');
       }
@@ -60,15 +63,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const signup = async (email: string, password: string, name: string) => {
+  const signup = async (email: string, password: string, name: string): Promise<SignupResponse> => {
     setLoading(true);
     setError(null);
 
     try {
       const response = await apiClient.signup({ email, password, name });
-      setUser(response);
-      localStorage.setItem('auth-user', JSON.stringify(response));
-      setIsAuthenticated(true);
+
+      // If auto-confirmed (no email verification), log the user in
+      if (response.status === 'logged_in' && response.token) {
+        const authUser: AuthResponse = {
+          token: response.token,
+          user_id: response.user_id || '',
+          name: response.name || '',
+        };
+        setUser(authUser);
+        localStorage.setItem('auth-user', JSON.stringify(authUser));
+        setIsAuthenticated(true);
+      }
+      // If confirm_email, don't set auth state — user must verify first
+
+      return response;
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Signup failed');
       setError(error);

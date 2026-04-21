@@ -53,7 +53,7 @@ export const TEACHING_STYLES = [
   },
 ] as const;
 
-export const GRADES = [9, 10] as const;
+export const GRADES = [9, 10, 11, 12] as const;
 
 export type Subject = keyof typeof SUBJECTS;
 export type TeachingStyle = typeof TEACHING_STYLES[number]['id'];

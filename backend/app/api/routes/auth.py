@@ -1,6 +1,19 @@
+"""
+Auth routes — signup and login via Supabase Auth.
+
+Signup flow:
+  1. auth.sign_up() via ANON client → triggers confirmation email
+  2. Insert student_profiles row (profile exists before email is confirmed)
+  3. Return success message — user must confirm email before logging in
+
+Login flow:
+  1. sign_in_with_password() via ANON client → get JWT token
+  2. Fetch profile name
+  3. Return { token, user_id, name }
+"""
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, EmailStr
-from app.services.supabase_service import get_supabase_client
+from app.services.supabase_service import get_supabase_client, get_supabase_auth_client
 import logging
 
 logger = logging.getLogger(__name__)
@@ -25,136 +38,149 @@ class AuthResponse(BaseModel):
     name: str = Field(..., description="User's full name")
 
 
-@router.post("/signup", response_model=AuthResponse)
+class SignupResponse(BaseModel):
+    status: str = Field(..., description="'confirm_email' or 'logged_in'")
+    message: str = Field(..., description="Human-readable message")
+    user_id: str | None = Field(None, description="User UUID if available")
+    token: str | None = Field(None, description="JWT token if auto-confirmed")
+    name: str | None = Field(None, description="User name")
+
+
+@router.post("/signup", response_model=SignupResponse)
 async def signup(req: SignupRequest):
-    """Create a new user account via Supabase Auth using admin API"""
+    """
+    Create a new user account via Supabase Auth.
+
+    Uses auth.sign_up() which triggers Supabase's email confirmation flow.
+    If email confirmation is enabled in Supabase settings, user must verify
+    their email before they can log in.
+    """
     try:
-        client = get_supabase_client()
+        auth_client = get_supabase_auth_client()    # ANON_KEY
+        admin_client = get_supabase_client()         # SERVICE_ROLE_KEY
 
-        logger.info(f"=== SIGNUP FLOW STARTED ===")
-        logger.info(f"Email: {req.email}, Name: {req.name}")
-
-        # Use admin API to create user (must use SERVICE_ROLE_KEY)
-        logger.info(f"Calling admin.create_user() with attributes:")
-        logger.info(f"  - email: {req.email}")
-        logger.info(f"  - password: ••••••••••")
-        logger.info(f"  - email_confirm: True")
+        # 1. Sign up via ANON client — this triggers the confirmation email
         try:
-            auth_response = client.auth.admin.create_user(
-                attributes={
-                    "email": req.email,
-                    "password": req.password,
-                    "email_confirm": True,  # Auto-confirm email in dev mode
+            signup_response = auth_client.auth.sign_up({
+                "email": req.email,
+                "password": req.password,
+                "options": {
+                    "data": {
+                        "name": req.name,
+                    }
                 }
-            )
-            logger.info(f"✅ Admin API call succeeded")
-        except Exception as admin_error:
-            logger.error(f"❌ Admin API call failed")
-            logger.error(f"   Error type: {type(admin_error).__name__}")
-            logger.error(f"   Error message: {str(admin_error)}")
-            logger.error(f"   Full exception: {admin_error}")
-            raise
+            })
+        except Exception as signup_error:
+            error_msg = str(signup_error).lower()
+            if "already registered" in error_msg or "already been registered" in error_msg:
+                raise HTTPException(
+                    status_code=409,
+                    detail="This email is already registered. Try signing in instead."
+                )
+            logger.error("Signup failed: %s", signup_error)
+            raise HTTPException(status_code=400, detail=f"Signup failed: {signup_error}")
 
-        if not auth_response.user:
-            raise HTTPException(status_code=400, detail="Signup failed - could not create user")
+        if not signup_response.user:
+            raise HTTPException(status_code=400, detail="Signup failed — could not create user")
 
-        user_id = str(auth_response.user.id)
-        logger.info(f"✅ Created user via admin API: {user_id}")
+        user_id = str(signup_response.user.id)
+        logger.info("Created user: %s (email: %s)", user_id, req.email)
 
-        # Create student profile in database
+        # 2. Create student profile (can exist before email confirmation)
         try:
-            client.table("student_profiles").insert({
+            admin_client.table("student_profiles").insert({
                 "user_id": user_id,
                 "name": req.name,
-                "grade": 9,
-                "subjects": ["Math", "English", "Science"],
+                "grade": 10,
+                "subjects": ["Science", "Mathematics"],
                 "email": req.email,
-                "teaching_style": "example_first",
+                "teaching_style": "definition_first",
                 "weak_areas": [],
                 "mastered_topics": [],
                 "total_sessions": 0,
             }).execute()
-            logger.info(f"Created profile for user: {user_id}")
+            logger.info("Created profile for user: %s", user_id)
         except Exception as profile_error:
-            logger.error(f"Failed to create profile: {profile_error}")
-            # Continue anyway - profile creation failure shouldn't block login
+            logger.warning("Profile creation failed (non-blocking): %s", profile_error)
 
-        # Generate a session token for the newly created user
-        # Get a fresh auth token by signing in with the credentials
-        signin_response = client.auth.sign_in_with_password({
-            "email": req.email,
-            "password": req.password,
-        })
+        # 3. Check if we got a session (means email confirmation is disabled)
+        if signup_response.session:
+            # Auto-confirmed — return token directly
+            return SignupResponse(
+                status="logged_in",
+                message="Account created successfully!",
+                user_id=user_id,
+                token=signup_response.session.access_token,
+                name=req.name,
+            )
 
-        if not signin_response.user or not signin_response.session:
-            raise HTTPException(status_code=400, detail="Signup succeeded but login failed - please try signing in")
-
-        return AuthResponse(
-            token=signin_response.session.access_token,
+        # Email confirmation required — no session token yet
+        return SignupResponse(
+            status="confirm_email",
+            message="Account created! Please check your email to verify your account.",
             user_id=user_id,
+            token=None,
             name=req.name,
         )
+
     except HTTPException:
         raise
     except Exception as e:
-        error_msg = str(e)
-        error_type = type(e).__name__
-
-        logger.error(f"")
-        logger.error(f"❌ SIGNUP FAILED")
-        logger.error(f"   Error Type: {error_type}")
-        logger.error(f"   Error Message: {error_msg}")
-        logger.error(f"   Full Exception: {e}")
-
-        # Try to extract more details
-        if hasattr(e, '__dict__'):
-            logger.error(f"   Exception Attributes: {e.__dict__}")
-
-        import traceback
-        logger.error(f"   Traceback:\n{traceback.format_exc()}")
-        logger.error(f"")
-
-        raise HTTPException(status_code=400, detail=f"Signup failed: {error_msg}")
+        logger.error("Signup failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=400, detail=f"Signup failed: {e}")
 
 
 @router.post("/login", response_model=AuthResponse)
 async def login(req: LoginRequest):
-    """Login with email and password"""
+    """Login with email and password."""
     try:
-        client = get_supabase_client()
+        auth_client = get_supabase_auth_client()    # ANON_KEY for sign_in
+        admin_client = get_supabase_client()         # SERVICE_ROLE for profile lookup
 
-        # Sign in with Supabase Auth
-        response = client.auth.sign_in_with_password({
-            "email": req.email,
-            "password": req.password,
-        })
+        # Sign in via ANON client
+        try:
+            response = auth_client.auth.sign_in_with_password({
+                "email": req.email,
+                "password": req.password,
+            })
+        except Exception as auth_error:
+            error_msg = str(auth_error).lower()
+            if "email not confirmed" in error_msg:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Please confirm your email before signing in. Check your inbox."
+                )
+            logger.warning("Login failed for %s: %s", req.email, auth_error)
+            raise HTTPException(status_code=401, detail="Invalid email or password")
 
         if not response.user or not response.session:
             raise HTTPException(status_code=401, detail="Invalid email or password")
 
-        user_id = response.user.id
-        session = response.session
+        user_id = str(response.user.id)
 
-        # Fetch user's profile to get name
+        # Fetch profile name
+        name = "Student"
         try:
-            profile_response = client.table("student_profiles") \
-                .select("name") \
-                .eq("user_id", user_id) \
-                .single() \
+            profile_res = (
+                admin_client.table("student_profiles")
+                .select("name")
+                .eq("user_id", user_id)
+                .single()
                 .execute()
-
-            name = profile_response.data.get("name", "Student") if profile_response.data else "Student"
+            )
+            if profile_res.data:
+                name = profile_res.data.get("name", "Student")
         except Exception as profile_error:
-            logger.warning(f"Could not fetch profile: {profile_error}")
-            name = "Student"
+            logger.warning("Could not fetch profile for %s: %s", user_id, profile_error)
 
         return AuthResponse(
-            token=session.access_token,
+            token=response.session.access_token,
             user_id=user_id,
             name=name,
         )
+
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Login error: {e}")
+        logger.error("Login error: %s", e)
         raise HTTPException(status_code=401, detail="Invalid email or password")

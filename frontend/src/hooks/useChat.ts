@@ -10,7 +10,7 @@ export interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
-  citations?: Array<{ chunk_id: number; chapter: string; section?: string; page?: string }>;
+  citations?: string[];
   timestamp: Date;
   error?: boolean;
 }

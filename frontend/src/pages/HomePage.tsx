@@ -8,7 +8,7 @@ import { useThemeContext } from '@/providers/ThemeProvider';
 export default function HomePage() {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
-  const { resolvedTheme, toggleTheme } = useThemeContext();
+  const { theme, toggleTheme } = useThemeContext();
 
   // Redirect to dashboard if already logged in
   useEffect(() => {
@@ -70,10 +70,10 @@ export default function HomePage() {
           </div>
           <div className="flex items-center gap-4">
             <button
-              onClick={() => toggleTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
+              onClick={() => toggleTheme(theme === 'dark' ? 'light' : 'dark')}
               className="p-2 hover:bg-muted rounded-lg transition-colors"
             >
-              {resolvedTheme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </button>
             <Button variant="outline" onClick={() => navigate('/login')}>
               Sign In

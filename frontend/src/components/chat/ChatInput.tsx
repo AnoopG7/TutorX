@@ -36,7 +36,7 @@ export function ChatInput({ onSend, loading, disabled }: ChatInputProps) {
           <input
             type="text"
             placeholder="Ask a question about your studies..."
-            disabled={disabled || loading}
+            disabled={disabled}
             className="flex-1 h-10 rounded-md border border-border bg-background px-4 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
             {...register('message')}
           />

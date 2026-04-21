@@ -2,9 +2,9 @@
  * QuickActions — New chat, browse chapters, quiz buttons
  */
 
-import { Link } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
-import { MessageCircle, Zap } from 'lucide-react';
+import { Link } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { MessageCircle } from "lucide-react";
 
 export function QuickActions() {
   return (
@@ -13,13 +13,6 @@ export function QuickActions() {
         <Button variant="default" size="lg" className="w-full gap-2">
           <MessageCircle className="h-4 w-4" />
           New Chat
-        </Button>
-      </Link>
-
-      <Link to="/progress">
-        <Button variant="outline" size="lg" className="w-full gap-2">
-          <Zap className="h-4 w-4" />
-          View Progress
         </Button>
       </Link>
     </div>
