@@ -6,7 +6,7 @@ import logging
 
 from app.config import get_settings
 from app.services.supabase_service import init_supabase
-from app.api.routes import chat, profile
+from app.api.routes import chat, profile, auth
 
 logging.basicConfig(
     level=logging.INFO,
@@ -44,6 +44,7 @@ app.add_middleware(
 )
 
 # ── Routes ──────────────────────────────────────────────────────────────────
+app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
 app.include_router(chat.router, prefix="/api/chat", tags=["Chat"])
 app.include_router(profile.router, prefix="/api", tags=["Profile"])
 

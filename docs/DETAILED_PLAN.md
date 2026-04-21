@@ -12,115 +12,98 @@ An intelligent tutoring agent designed specifically for 9th and 10th grade CBSE 
 
 ## 2. Agent Architecture
 
-### 2.1 The Agent Loop
-Every interaction runs through this reasoning cycle — not a one-shot RAG call:
+### 2.1 The Agent Loop (Current Implementation)
+
+> **Architecture Decision (April 2026):** We replaced the original ReAct multi-tool agent (which caused 14+ Groq API calls per question, hitting rate limits and timeouts) with a **direct RAG + single LLM call** architecture. The agent now:
+> 1. Loads student profile + session history from Supabase
+> 2. Retrieves relevant NCERT chunks via pgvector RPC (with query reformulation + chunk enrichment)
+> 3. Builds a single rich prompt with context + student profile + conversation history
+> 4. Calls Groq **once** → structured pedagogical response
+> 5. Persists messages to session history
 
 ```
 OBSERVE
   ├─ Student's current message
-  ├─ Conversation history (this session)
+  ├─ Conversation history (last 6 messages from session)
   ├─ Student profile (grade, weak areas, mastered topics, teaching style)
-  └─ Retrieved textbook context (RAG)
+  └─ Retrieved textbook context (pgvector RPC + enrichment)
         ↓
-THINK (LLM Reasoning Step)
-  ├─ What concept is the student struggling with?
-  ├─ How well do they understand it? (probe if unclear)
-  ├─ What teaching action is most appropriate right now?
-  └─ Is this a new topic or a follow-up?
+RETRIEVE (RAG Pipeline)
+  ├─ Embed query via Ollama nomic-embed-text (768-dim)
+  ├─ pgvector RPC match_textbook_chunks (cosine similarity)
+  ├─ [Optional] LLM query reformulation if <3 results
+  ├─ Deduplicate chunks
+  └─ [Optional] LLM chunk enrichment (examples, misconceptions)
         ↓
-ACT (Tool Selection)
-  ├─ explain_concept()     → if student needs explanation
-  ├─ generate_quiz()       → if concept was explained, check understanding
-  ├─ check_answer()        → if student answered a quiz question
-  ├─ get_chapter_summary() → if student wants overview
-  ├─ suggest_next_topic()  → if student has finished a concept
-  └─ probe_understanding() → if the agent is unsure of student's level
+GENERATE (Single Groq Call)
+  ├─ System prompt with teaching style, weak areas, mastered topics
+  ├─ Formatted context from retrieved chunks
+  ├─ Last 6 conversation messages for continuity
+  └─ Current user message
         ↓
-REFLECT
-  ├─ Did the student understand? (based on their response)
-  ├─ Update student profile: weak_areas, mastered_topics
-  └─ Decide: explain again differently / move on / quiz
+PERSIST
+  ├─ Store user message in session
+  ├─ Store assistant response in session
+  └─ Session ID returned to client for continuity
 ```
 
-### 2.2 Agent Tools (Function Calling)
-The agent calls these discrete tools — never does everything in one LLM call:
+### 2.2 Enhancement Strategies
 
-| Tool | Input | Output | Notes |
-|------|-------|--------|-------|
-| `search_textbook` | query, subject, grade | Top 5 textbook chunks + citations | Core RAG tool |
-| `explain_concept` | concept, student_level, teaching_style | Structured explanation + example | Uses RAG context |
-| `probe_understanding` | concept, student_response | Assessment + follow-up question | Socratic check |
-| `generate_quiz` | topic, difficulty, num_questions | Quiz questions with answers | Practice mode |
-| `check_answer` | question, student_answer | Correct/incorrect + explanation | Instant feedback |
-| `get_chapter_summary` | chapter_id | Bullet-point summary | Quick overview |
-| `get_related_concepts` | topic | List of linked topics | Concept mapping |
-| `update_student_profile` | weak_areas, mastered_topics | Confirmation | Memory write |
-| `suggest_next_topic` | student_history, subject | Recommended next topic | Proactive guidance |
+| Strategy | Trigger | Action | Groq Cost |
+|----------|---------|--------|-----------|
+| Query Reformulation | `chunks < 3` or `avg_sim < 0.60` | LLM generates 4 search variants, retry best | +1 call (~150 tokens) |
+| Chunk Enrichment | `chunks > 0` and `avg_sim > 0.50` | LLM adds examples, misconceptions, connections | +1 call (~300 tokens) |
+| Contextual Citations | Always | Citations woven into response text (not bibliography) | Within main call |
 
-### 2.3 Pedagogical Strategy
+### 2.3 Pedagogical Strategy (Unchanged)
 The agent adapts its teaching style based on the student's profile and in-session responses:
 
 | Student State | Teaching Action |
 |---|---|
-| First time asking about a topic | Analogy → Core concept → Example → Quick check |
+| First time asking about a topic | Definition → Working Principle → Key Points → Example → Quick Check |
 | Struggling (wrong answers / confused) | Simplify → Different analogy → Break into smaller steps |
 | Getting it right | Deepen → Harder example → Edge cases → Quiz |
 | Advanced / fast learner | Socratic questioning → Guide to self-discover |
 | Exam preparation mode | Practice questions → Timed quiz → Weak area review |
 
-### 2.4 Core Features
-
-#### Concept Explanation
-- **AI-powered topic breakdown:** Retrieve and explain textbook concepts in student-friendly language
-- **Multi-level explanations:** Basic, intermediate, advanced — agent chooses based on student profile
-- **Example-based learning:** Real-world examples for abstract concepts
-- **Subject coverage:** Science, Mathematics, Social Studies, English (NCERT 9th & 10th)
-
-#### Question Answering
-- **Textbook-grounded answers:** Every answer cites the NCERT chapter/section it came from
-- **Citation tracking:** Page reference shown alongside answer
-- **Follow-up handling:** Agent remembers the last question — student can say "why?" without re-stating context
-
-#### Study Support
-- **Chapter summaries:** Concise, structured summaries of chapters
-- **Practice questions:** Chapter-end questions with model answers
-- **Exam prep mode:** Previous year questions, important topic weighting
-- **Concept mapping:** Show how topics connect across chapters
-
-#### Personalization & Memory
-- **Session memory:** Full conversation history within a session
-- **Cross-session memory:** Weak areas, mastered topics, quiz scores persist across sessions
-- **Weak area identification:** Agent proactively revisits topics the student struggled with
-- **Teaching style preference:** Stored per student (analogy-first / example-first / Socratic)
+### 2.4 Teaching Styles Supported
+1. **Definition-First** ⭐ (Default) — Definition → Principle → Key Points → Example → Check
+2. **Analogy-First** — Relatable analogy first, then explanation
+3. **Example-First** — Concrete example first, then concept
+4. **Socratic** — Guiding questions to help student think
 
 ---
 
 ## 3. Technical Architecture
 
-### 3.1 Backend System - Agent + RAG Architecture
+### 3.1 Backend System — Current Implementation
 ```
-Student Message
+Student Message (Web / CLI / Telegram)
         ↓
-API Gateway (Supabase Auth)
+API Gateway (FastAPI — /api/chat)
+  ├─ Dual auth: Bearer JWT (production) or user_id in body (dev mode)
         ↓
-LlamaIndex Agent (Agent Loop)
-    ├─ Load: session history + student profile from Supabase
-    ├─ THINK: Groq LLM decides which tool to call
-    ├─ ACT: Call tool (search_textbook / generate_quiz / etc.)
-    │       └─ search_textbook → pgvector similarity search
-    ├─ RESPOND: Format response with citations
-    └─ REFLECT: Update student profile (weak areas, mastered topics)
+Agent Loop (app/agent/loop.py)
+  ├─ 1. LOAD: Student profile + session from Supabase
+  ├─ 2. RETRIEVE: pgvector RPC → query reformulation → chunk enrichment
+  ├─ 3. BUILD: System prompt + context + history + message
+  ├─ 4. GENERATE: Single Groq achat() call → llama-3.3-70b-versatile
+  └─ 5. PERSIST: Append user msg + assistant response to session
         ↓
 Supabase PostgreSQL
-    ├─ textbook_chunks (with 768-dim embeddings)
-    ├─ qa_cache (frequently asked Q&A pairs)
-    ├─ student_profiles (weak areas, mastered topics, style)
-    └─ sessions (full conversation history)
+  ├─ textbook_chunks (768-dim pgvector, IVFFlat index)
+  ├─ qa_cache (question→answer pairs, hit counting)
+  ├─ student_profiles (weak areas, mastered topics, teaching style)
+  ├─ sessions (JSONB message array per session)
+  ├─ user_progress (per subject-chapter tracking)
+  ├─ practice_questions (MCQ, short answer bank)
+  └─ quiz_attempts (score history)
         ↓
-Response to Student with Citations
+Response to Client
+  { response, session_id, citations[], tools_used[] }
 ```
 
-### 3.2 Data Pipeline - NCERT Textbook Ingestion
+### 3.2 Data Pipeline — NCERT Textbook Ingestion
 > **Copyright Note:** NCERT books are Government of India publications released for free public use. Confirm this for your specific use-case and document it.
 
 1. **Textbook Ingestion:** Admin downloads NCERT PDFs from ncert.nic.in (official, free)
@@ -128,373 +111,319 @@ Response to Student with Citations
 3. **Chunking:** Split into 400-500 token chunks with 50-token overlap
 4. **Embedding Generation:** Use `nomic-embed-text` via Ollama (local, free, 768-dim)
 5. **Storage:** Insert chunks + embeddings into Supabase pgvector
-6. **Indexing:** Create IVFFlat index on Supabase for fast similarity search
-7. **Quality Control:** Test with 20+ sample questions per chapter before going live
-8. **Caching:** Store Q&A pairs in qa_cache as students ask questions
+6. **Indexing:** IVFFlat index on Supabase for fast similarity search
+7. **Quality Control:** Test with sample questions per chapter before going live
+8. **Caching:** QA cache is automatically populated as students ask questions
 
 ### 3.3 Key Technologies
-- **Agent Framework:** LlamaIndex (agent loop + tool calling + RAG pipeline)
-- **Backend:** FastAPI/Python on Render (free tier)
-- **Frontend:** React + Vite on Vercel (free tier)
-- **Database:** Supabase PostgreSQL (500MB free tier) - all data centralized
-- **Vector Search:** Supabase pgvector (built-in, no extra cost)
-- **Embeddings:** `nomic-embed-text` via Ollama — **768-dimensional, free, runs locally during ingestion**
-- **LLM:** Groq API (Mixtral 8x7B) — unlimited free tier for reasoning
-- **Authentication:** Supabase Auth (included, battle-tested)
-- **Telegram Bot:** Telegram Bot API (free) — quick question interface
-- **File Storage:** Supabase Storage (500MB free) — for study notes, progress exports
+- **Agent Framework:** LlamaIndex (LLM wrapper + embedding integration)
+- **LLM:** Groq API (`llama-3.3-70b-versatile`) — free tier
+- **Embeddings:** `nomic-embed-text` via Ollama — 768-dim, free, local
+- **Backend:** FastAPI/Python
+- **Database:** Supabase PostgreSQL + pgvector + Auth + Storage
+- **Frontend:** React + Vite (TypeScript)
+- **Telegram Bot:** python-telegram-bot (webhook integration)
 
-> ⚠️ **Important:** Groq does NOT provide embedding models directly. All embeddings use `nomic-embed-text`. Do not confuse Groq (LLM inference) with embedding generation.
+> ⚠️ **Important:** Groq does NOT provide embedding models. All embeddings use `nomic-embed-text` via Ollama. Do not confuse Groq (LLM inference) with embedding generation.
 
 ---
 
 ## 4. Implementation Phases
 
-### Phase 1: Foundation (Weeks 1-3)
-- [ ] Set up project structure and development environment
-- [ ] Integrate PDF processing for textbook uploads
-- [ ] Build basic RAG pipeline
-- [ ] Create simple Q&A interface
-- [ ] Set up user authentication
+### Phase 1: Foundation ✅ COMPLETE
+- [x] Project structure and development environment
+- [x] PDF processing and textbook ingestion (`scripts/ingest.py`, `scripts/batch_ingest.py`)
+- [x] RAG pipeline (embedder → pgvector RPC → retriever with fallback)
+- [x] Agent loop — single Groq call architecture (`app/agent/loop.py`)
+- [x] Session management + student profiles (`app/agent/memory.py`)
+- [x] Chat API endpoint with dual auth (`app/api/routes/chat.py`)
+- [x] Profile/progress endpoints (`app/api/routes/profile.py`)
+- [x] System prompt with teaching style support (`app/prompts/system_prompt_v1.txt`)
+- [x] Query reformulation strategy (`app/rag/query_reformulation.py`)
+- [x] Chunk enrichment strategy (`app/rag/chunk_enrichment.py`)
+- [x] QA cache infrastructure (`app/rag/cache.py`)
+- [x] Supabase service with SERVICE_ROLE_KEY (`app/services/supabase_service.py`)
+- [x] Groq service singleton (`app/services/groq_service.py`)
+- [x] DB schema with all 8 tables + RLS + RPC functions
+- [x] Seed data script (`scripts/seed_tutorx.py`)
+- [x] CLI chat interface (`scripts/chat_cli.py`)
+- [x] Full backend audit — 21 issues found and fixed (models, auth, retriever, etc.)
 
-### Phase 2: Core Features (Weeks 4-6)
-- [ ] Implement concept explanation engine
-- [ ] Build multi-level explanation system
-- [ ] Create chapter summary generator
-- [ ] Develop question practice module
-- [ ] Add conversation history tracking
+### Phase 2: Core Features — 🔜 NEXT
+- [ ] **Quiz generation endpoint** — `POST /api/quiz/generate`
+  - Accept: subject, chapter, difficulty, num_questions
+  - Return: MCQ questions from practice_questions table + LLM-generated ones
+  - Track attempts in `quiz_attempts` table
+- [ ] **Answer checking endpoint** — `POST /api/quiz/check`
+  - Accept: question_id, student_answer
+  - Return: correct/incorrect, explanation, update weak_areas
+- [ ] **Chapter summary endpoint** — `GET /api/chapters/{chapter_id}/summary`
+  - Retrieve all chunks for a chapter, use LLM to generate concise summary
+- [ ] **QA cache integration in agent loop** — check cache before Groq call
+  - Match via embedding similarity (>0.90 threshold)
+  - Auto-populate cache after successful responses
+- [ ] **Weak area auto-detection** — after quiz/wrong answers, update profile
+- [ ] **Response metadata** — latency breakdown, strategies applied, similarity scores
 
-### Phase 3: Enhancement (Weeks 7-9)
-- [ ] Implement visual aid generation
-- [ ] Build concept mapping feature
-- [ ] Add personalization engine
-- [ ] Create progress dashboard
-- [ ] Develop weak area identification
+### Phase 3: Enhancement — PLANNED
+- [ ] **Evaluation framework** (`evals/` directory)
+  - `golden_dataset.json` — 50+ Q&A pairs with expected answers
+  - `eval_retrieval.py` — RAG hit rate, MRR
+  - `eval_answer_quality.py` — LLM-as-judge accuracy scoring
+  - Run via `run_evals.sh`
+- [ ] **Concept mapping** — show related topics across chapters
+- [ ] **Progress dashboard API** — aggregate stats for frontend
+- [ ] **Teaching style auto-adaptation** — detect student's learning pattern
+- [ ] **Telegram bot integration** — complete webhook handler
+- [ ] **Streaming responses** — SSE from Groq for real-time output
 
-### Phase 4: Polish & Deploy (Weeks 10-12)
-- [ ] Performance optimization
-- [ ] Mobile responsiveness
-- [ ] Testing and bug fixes
-- [ ] User feedback integration
-- [ ] Production deployment
+### Phase 4: Polish & Deploy — PLANNED
+- [ ] **Production auth** — migrate from SERVICE_ROLE_KEY to strict RLS policies
+- [ ] **Rate limiting** — per-user request throttling
+- [ ] **Error monitoring** — structured logging, alerts
+- [ ] **Performance optimization** — response caching, connection pooling
+- [ ] **Deploy** — Backend on Render, Frontend on Vercel
+- [ ] **Mobile responsiveness** in frontend
 
 ---
 
-## 5. Data Management
+## 5. Current File Structure
 
-### 5.1 Textbook Data Structure - Supabase Schema
-```sql
--- Textbook chunks stored with embeddings in Supabase pgvector
-CREATE TABLE textbook_chunks (
-  id BIGSERIAL PRIMARY KEY,
-  chapter VARCHAR(255),           -- "Chapter 1: Chemical Reactions"
-  section VARCHAR(255),           -- "1.2 Types of Reactions"
-  subject VARCHAR(100),           -- "Science", "Mathematics", etc
-  grade INTEGER,                  -- 9 or 10
-  content TEXT NOT NULL,          -- 400-500 token chunk
-  embedding vector(768),          -- nomic-embed-text (768-dim, NOT Groq)
-  chunk_index INTEGER,            -- Sequential position in chapter
-  page_reference VARCHAR(50),     -- "Page 12"
-  is_verified BOOLEAN DEFAULT FALSE,
-  quality_score DECIMAL(3, 2),    -- 0.00 to 1.00
-  created_at TIMESTAMP
-);
-
--- Create pgvector index for fast similarity search
-CREATE INDEX textbook_chunks_embedding_idx 
-ON textbook_chunks USING ivfflat (embedding vector_cosine_ops);
-
--- Question-Answer cache for frequently asked questions
-CREATE TABLE qa_cache (
-  id BIGSERIAL PRIMARY KEY,
-  question TEXT,
-  question_embedding vector(768),  -- nomic-embed-text
-  answer TEXT,
-  citations JSONB,
-  hits INTEGER DEFAULT 0,          -- How many times asked
-  created_at TIMESTAMP
-);
-
--- Student memory: persists across sessions
-CREATE TABLE student_profiles (
-  profile_id BIGSERIAL PRIMARY KEY,
-  user_id UUID REFERENCES auth.users,
-  grade INTEGER,
-  teaching_style VARCHAR(50) DEFAULT 'analogy_first',  -- 'analogy_first' | 'example_first' | 'socratic'
-  weak_areas JSONB DEFAULT '[]',       -- [{"topic": "photosynthesis", "score": 0.4}]
-  mastered_topics JSONB DEFAULT '[]',  -- ["oxidation", "reduction"]
-  quiz_history JSONB DEFAULT '[]',     -- [{"topic", "score", "date"}]
-  total_sessions INTEGER DEFAULT 0,
-  updated_at TIMESTAMP DEFAULT NOW()
-);
-
--- Session history (conversation memory within + across sessions)
-CREATE TABLE sessions (
-  session_id BIGSERIAL PRIMARY KEY,
-  user_id UUID REFERENCES auth.users,
-  messages JSONB NOT NULL DEFAULT '[]',  -- [{role, content, tool_calls, timestamp}]
-  subject VARCHAR(100),
-  started_at TIMESTAMP DEFAULT NOW(),
-  ended_at TIMESTAMP
-);
+```
+cbse-study-agent/
+├── backend/
+│   ├── app/
+│   │   ├── __init__.py
+│   │   ├── main.py                       # FastAPI entry, CORS, routers
+│   │   ├── config.py                     # Pydantic settings (env vars)
+│   │   │
+│   │   ├── agent/
+│   │   │   ├── loop.py                   # ✅ Direct RAG + single Groq call
+│   │   │   ├── memory.py                 # ✅ Profile + session persistence
+│   │   │   └── __init__.py
+│   │   │
+│   │   ├── rag/
+│   │   │   ├── retriever.py              # ✅ pgvector RPC + local fallback
+│   │   │   ├── embedder.py               # ✅ Ollama nomic-embed-text
+│   │   │   ├── query_reformulation.py    # ✅ LLM query variants
+│   │   │   ├── chunk_enrichment.py       # ✅ LLM content enrichment
+│   │   │   ├── cache.py                  # ✅ QA cache manager
+│   │   │   ├── rpc_functions.sql         # ✅ pgvector match functions
+│   │   │   └── __init__.py
+│   │   │
+│   │   ├── api/
+│   │   │   ├── auth.py                   # ✅ Dual auth (JWT + dev mode)
+│   │   │   ├── routes/
+│   │   │   │   ├── chat.py               # ✅ POST /api/chat
+│   │   │   │   ├── profile.py            # ✅ Profile + progress endpoints
+│   │   │   │   └── __init__.py
+│   │   │   └── __init__.py
+│   │   │
+│   │   ├── services/
+│   │   │   ├── supabase_service.py       # ✅ Singleton with SERVICE_ROLE_KEY
+│   │   │   ├── groq_service.py           # ✅ Client + model from settings
+│   │   │   └── __init__.py
+│   │   │
+│   │   ├── models/
+│   │   │   ├── schemas.py                # ✅ Pydantic schemas (aligned)
+│   │   │   └── __init__.py
+│   │   │
+│   │   ├── prompts/
+│   │   │   ├── system_prompt_v1.txt      # ✅ Versioned system prompt
+│   │   │   └── __init__.py
+│   │   │
+│   │   ├── background_tasks/
+│   │   │   ├── telegram_webhook.py       # ⏳ Placeholder (Phase 3)
+│   │   │   └── __init__.py
+│   │   │
+│   │   └── utils/
+│   │       ├── errors.py                 # ✅ Custom exceptions
+│   │       ├── logger.py                 # ✅ Logger helper
+│   │       └── __init__.py
+│   │
+│   ├── scripts/
+│   │   ├── ingest.py                     # ✅ Single PDF → pgvector
+│   │   ├── batch_ingest.py               # ✅ All PDFs by subject
+│   │   ├── batch_ingest_new.py           # ✅ New subjects only
+│   │   ├── seed_tutorx.py                # ✅ Sample data (Ollama embeds)
+│   │   └── chat_cli.py                   # ✅ Interactive CLI
+│   │
+│   ├── requirements.txt                  # ✅ All deps specified
+│   ├── .env / .env.example               # ✅ Environment config
+│   └── README.md                         # ✅ Architecture + setup docs
+│
+├── frontend/                             # ⏳ Needs rebuild (Phase 2+)
+│   ├── src/
+│   │   ├── App.tsx                       # Skeleton
+│   │   └── main.tsx                      # Entry point
+│   ├── .env                              # Supabase + API URL configured
+│   └── vite.config.ts
+│
+├── docs/
+│   └── DETAILED_PLAN.md                  # This file
+│
+├── db_schema.sql                         # ✅ Full schema (8 tables, RLS)
+├── DETAILED_FLOW.md                      # ✅ Complete request flow diagram
+└── CLEANUP_REPORT.md                     # ✅ Audit results
 ```
 
-### 5.2 User Progress Tracking
-```json
-{
-  "user_id": "student_123",
-  "grade": "10",
-  "progress": {
-    "chapters_visited": ["ch1", "ch2"],
-    "topics_completed": ["oxidation", "reduction"],
-    "weak_areas": ["organic_chemistry"],
-    "quiz_scores": [...]
-  },
-  "conversation_history": [...]
-}
-```
+---
+
+## 6. API Endpoints — Current Status
+
+### Implemented ✅
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/chat` | Main chat — runs agent loop, returns response + citations |
+| `GET` | `/api/chat/sessions/{user_id}` | List recent sessions |
+| `GET` | `/api/chat/sessions/{user_id}/{session_id}/history` | Full session history |
+| `POST` | `/api/chat/sessions/{session_id}/close` | Mark session ended |
+| `GET` | `/api/student/profile` | Get student profile (auth required) |
+| `GET` | `/api/student/weak-areas` | Get weak areas + mastered topics |
+| `GET` | `/api/student/progress` | Per-subject progress data |
+| `PUT` | `/api/student/preference` | Update teaching style |
+| `GET` | `/api/chapters/{subject}/{grade}` | List available chapters |
+
+### Planned (Phase 2) 🔜
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/quiz/generate` | Generate quiz for a chapter/topic |
+| `POST` | `/api/quiz/check` | Check answer, return feedback |
+| `GET` | `/api/chapters/{chapter_id}/summary` | LLM-generated chapter summary |
+| `GET` | `/api/recommendations` | Personalized study recommendations |
+| `POST` | `/api/student/profile` | Create student profile from frontend |
+
+### Planned (Phase 3) 📋
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/webhook/telegram` | Telegram bot webhook |
+| `GET` | `/api/concepts/{topic}/related` | Related concept mapping |
+| `GET` | `/api/evals/run` | Run evaluation suite |
 
 ---
 
-## 6. API Endpoints
+## 7. Database Schema
 
-### Question Answering
-- `POST /api/ask` - Submit a question
-- `GET /api/answer/{question_id}` - Get answer with sources
-- `POST /api/ask/follow-up` - Ask follow-up questions
+### Tables (8 total — all in `db_schema.sql`)
+1. **student_profiles** — User identity, grade, teaching style, weak areas, mastered topics
+2. **textbook_chunks** — NCERT content with 768-dim pgvector embeddings
+3. **qa_cache** — Cached question→answer pairs with hit counting
+4. **sessions** — Conversation history (JSONB messages array)
+5. **user_questions** — Individual Q&A log with feedback
+6. **practice_questions** — Static question bank (MCQ, short answer)
+7. **quiz_attempts** — Score tracking per quiz attempt
+8. **user_progress** — Per subject-chapter completion tracking
 
-### Study Material
-- `GET /api/chapters/{subject}/{grade}` - List available chapters
-- `GET /api/chapter/{chapter_id}/summary` - Get chapter summary
-- `GET /api/chapter/{chapter_id}/questions` - Get practice questions
-- `GET /api/topic/{topic_id}/concepts` - Get concept explanations
+### RPC Functions (in `rpc_functions.sql`)
+- `match_textbook_chunks()` — pgvector cosine similarity with subject/grade filters
+- `match_qa_cache()` — QA cache lookup by embedding similarity
+- `increment_cache_hits()` — Update cache hit counter
 
-### Personalization
-- `GET /api/student/progress` - Get learning progress
-- `GET /api/student/weak-areas` - Identify weak topics
-- `POST /api/student/learning-preference` - Set learning style
-- `GET /api/recommendations` - Get personalized study recommendations
-
----
-
-## 7. User Interface
-
-### 7.1 Main Dashboard
-- Welcome section with recent topics
-- Quick search bar for questions
-- Subject/chapter navigation
-- Progress overview widget
-- Recent conversations
-
-### 7.2 Study Interface
-- Left sidebar: Chapter/Topic navigation
-- Main area: Content display and explanation
-- Right sidebar: Related concepts and quick links
-- Bottom: Question input and chat
-
-### 7.3 Practice/Quiz Interface
-- Question display with options
-- Real-time feedback
-- Progress bar
-- Answer explanation
-- Performance analytics
-
-### 7.4 Progress Dashboard
-- Topics completed/pending
-- Weak areas highlighted
-- Learning timeline
-- Performance metrics
-- Goals and targets
+### RLS Policies
+- Students see only their own data (profiles, sessions, questions, progress, attempts)
+- Textbook chunks, practice questions, QA cache are public-read
 
 ---
 
 ## 8. Quality Assurance
 
-### 8.1 Content Validation
-- Manual review of textbook extraction
-- Accuracy checking against original sources
-- Regular updates with curriculum changes
-- Expert review by CBSE educators
+### 8.1 Backend Audit (Completed April 20, 2026)
+Full audit of all 24 backend files. Issues found and fixed:
+- **7 critical bugs**: Decommissioned models, missing functions, wrong embedding dimensions, full-table scan retriever
+- **9 warnings**: Duplicate chunks, stale scores, sync-in-async, route nesting, auth in dev mode
+- **5 best practices**: f-string logging, recreated clients, conflicting loggers, schema mismatches
 
-### 8.2 Response Quality
-- Fact-checking mechanisms
-- Citation verification
-- Difficulty level appropriateness
-- Clarity and comprehensiveness checks
-
-### 8.3 Testing Strategy
-- Unit tests for all agent tools (`search_textbook`, `generate_quiz`, `check_answer`, etc.)
-- Integration tests for RAG pipeline:
-  - Test Supabase pgvector similarity search accuracy (cosine similarity threshold)
-  - Test citation accuracy and relevance against known textbook passages
-  - Measure query response time (< 2 seconds target)
-- Agent loop tests: does the agent correctly choose the right tool for each student state?
-- User acceptance testing with real students
-- Performance testing for response time and vector search precision (> 90% target)
-
-### 8.4 Evaluation Framework (Evals)
-Add an `evals/` directory from day one. Without evals, you can't know if a prompt change made the agent better or worse.
-
-```
-evals/
-  golden_dataset.json        # 50+ {question, expected_answer, citation} pairs
-  eval_retrieval.py          # Tests RAG retrieval quality (hit rate, MRR)
-  eval_answer_quality.py     # LLM-as-judge: is the answer accurate + age-appropriate?
-  eval_agent_loop.py         # Does agent pick the right tool for each scenario?
-  run_evals.sh               # Run all evals, output score report
-```
-
-Use **RAGAS** metrics for RAG evaluation: faithfulness, answer relevancy, context precision.
+### 8.2 Testing Strategy
+- Unit tests for RAG retrieval accuracy
+- Integration tests for agent loop (query → response)
+- CLI testing via `scripts/chat_cli.py`
+- Eval framework planned (Phase 3)
 
 ---
 
-## 9. Textbook Integration
+## 9. Configuration
 
-### 9.1 Supported Formats
-- PDF textbooks (primary)
-- EPUB for digital books
-- Plain text documents
+### Environment Variables
+```env
+# Groq LLM
+GROQ_API_KEY=your_key
+GROQ_MODEL=llama-3.3-70b-versatile   # ← Updated from decommissioned mixtral
 
-### 9.2 Upload Process - RAG Pipeline
-1. Admin downloads NCERT PDFs from ncert.nic.in (free, official)
-2. Run ingestion script: extracts chapters/sections using `pdfplumber`
-3. Manual spot-check of extraction accuracy (compare 5-10 pages to source)
-4. **Chunking:** Split into 400-500 token chunks with 50-token overlap
-5. **Embedding Generation:** For each chunk:
-   - Run `nomic-embed-text` via Ollama locally
-   - Generate **768-dimensional** embedding
-   - Cost: $0 (runs locally, no API)
-6. **Storage:** Insert into Supabase pgvector with metadata
-7. **Indexing:** Create IVFFlat index for similarity search
-8. **Verification:** Run eval suite against 20+ sample questions per chapter
-9. Quality checks and manual review before going live
-10. QA cache is automatically populated as students ask questions
+# Supabase
+SUPABASE_URL=your_url
+SUPABASE_KEY=your_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_service_key
 
-### 9.3 Supported CBSE Books (10th Grade - Example)
-- **Science:** Physics, Chemistry, Biology (NCERT)
-- **Mathematics:** Algebra, Geometry, Statistics (NCERT)
-- **Social Studies:** History, Geography, Political Science (NCERT)
-- **English:** Literature and Language books
+# Ollama (local embeddings)
+# Runs on http://localhost:11434 by default
 
----
+# Telegram (optional)
+TELEGRAM_TOKEN=your_bot_token
+TELEGRAM_WEBHOOK_URL=https://your-domain/webhook/telegram
 
-## 10. Success Metrics
-
-### 10.1 User Engagement
-- Daily active users
-- Average session duration
-- Questions answered per user
-- Return user rate
-
-### 10.2 Learning Outcomes
-- Student reported improvement in grades
-- Topics mastered tracking
-- Quiz performance improvement
-- Time spent on weak areas
-
-### 10.3 System Performance
-- Response time < 2 seconds
-- Answer accuracy > 95%
-- API uptime > 99.5%
-- Vector search precision > 90%
-
----
-
-## 11. Future Enhancements
-
-- **Peer Learning:** Connect students for collaborative learning
-- **Teacher Dashboard:** For educators to track student progress
-- **Voice Interface:** Audio questions and explanations
-- **AR Visualization:** Augmented reality for complex concepts
-- **Adaptive Learning Paths:** AI-generated personalized study plans
-- **Offline Mode:** Download content for offline learning
-- **Multi-language Support:** Support for regional languages
-- **Board Expansion:** Extend to other boards (IB, A-Levels, etc.)
-
----
-
-## 12. Dependencies & Requirements
-
-### 12.1 External APIs & Libraries (All FREE Tier)
-- **Groq API:** LLM inference (Mixtral 8x7B) — Unlimited free tier
-- **Supabase:** PostgreSQL with pgvector — 500MB free tier
-- **Ollama + nomic-embed-text:** Local embedding generation — free, no API key needed
-- **LlamaIndex:** Agent framework + RAG pipeline — open source, free
-- **Telegram Bot API:** Quick question interface — free
-- **No embedded LLM from Groq:** Groq is for generation only, not embeddings
-
-### 12.2 Project Directory Structure
-```
-cbse-study-agent/
-  backend/
-    agent/
-      loop.py          # Main agent reasoning loop
-      tools.py         # All tool definitions (search_textbook, quiz, etc.)
-      memory.py        # Student profile read/write
-    rag/
-      ingest.py        # PDF → chunks → embeddings pipeline
-      retriever.py     # pgvector similarity search
-    prompts/
-      system_prompt_v1.txt    # Versioned system prompt
-      explain_template_v1.txt # Explanation template
-    evals/
-      golden_dataset.json     # Test Q&A pairs
-      eval_retrieval.py
-      eval_answer_quality.py
-      eval_agent_loop.py
-  frontend/
-  docs/
+# Environment
+ENVIRONMENT=development
+DEBUG=true
 ```
 
-### 12.3 Infrastructure
-- **Backend:** Render (FastAPI, free tier)
-- **Frontend:** Vercel (React + Vite, free tier)
-- **Database:** Supabase (PostgreSQL + pgvector + Auth + Storage)
+### Feature Flags (in `retriever.py`)
+```python
+USE_QUERY_REFORMULATION = True   # Strategy 2 — LLM reformulates low-quality queries
+USE_CHUNK_ENRICHMENT = True      # Strategy 3 — LLM enriches top chunk with examples
+```
 
-### 12.3 Legal & Compliance
-- CBSE textbook rights verification
-- FERPA/student data privacy compliance
-- Terms of service and privacy policy
-- Data protection (GDPR, local regulations)
-
----
-
-## 13. Deployment Strategy
-
-### 13.1 MVP (Minimum Viable Product)
-- Single subject (Science)
-- 10th grade only
-- Basic Q&A functionality
-- Limited to 100 concurrent users
-- Web interface only
-
-### 13.2 Production Rollout
-- Multi-subject support
-- Both 9th and 10th grades
-- Advanced features
-- Mobile app launch
-- Scale to 10K+ concurrent users
+### RAG Parameters
+```python
+TOP_K = 5                    # Return top 5 chunks
+MIN_SIMILARITY = 0.65        # Minimum cosine similarity threshold
+EMBED_DIM = 768              # nomic-embed-text dimension
+CHUNK_SIZE = 450             # Target tokens per chunk
+CHUNK_OVERLAP = 50           # Overlap between chunks
+```
 
 ---
 
-## 14. Risks & Mitigation
+## 10. Performance Characteristics
 
-| Risk | Impact | Mitigation |
-|------|--------|-----------|
-| Textbook copyright issues | Legal | Verify rights, seek permissions |
-| Low user adoption | Business | Beta testing, marketing |
-| AI hallucination/incorrect answers | Quality | Manual verification, citations |
-| High infrastructure costs | Financial | Optimize queries, caching |
-| Data privacy concerns | Legal | GDPR compliance, encryption |
-| Fast curriculum changes | Maintenance | Frequent content updates |
+| Stage | Time | Notes |
+|-------|------|-------|
+| Session + Profile load | ~15ms | Supabase query |
+| Query embedding | ~50ms | Ollama local |
+| pgvector RPC search | ~20ms | Server-side similarity |
+| Query Reformulation | ~500ms | Only if <3 results (optional) |
+| Chunk Enrichment | ~500ms | Only if sim>0.50 (optional) |
+| LLM Generation | ~1000ms | Single Groq call |
+| Persistence | ~20ms | Supabase write |
+| **Total** | **~1.5–2.5s** | Depends on strategies triggered |
+
+**Key metric:** 1 Groq call per message (vs. 14+ with old ReAct agent)
 
 ---
 
-## 15. Timeline & Milestones
+## 11. Known Limitations & Technical Debt
 
-- **Month 1:** MVP with Science subject, basic Q&A
-- **Month 2:** Multi-subject support, explanation features
-- **Month 3:** Personalization & progress tracking
-- **Month 4:** Mobile app, advanced features
-- **Month 5-6:** Beta launch with real users, feedback collection
-- **Month 6+:** Production launch, continuous improvement
+1. **Sync-in-async**: supabase-py is synchronous — blocks event loop during DB calls. Acceptable for dev, needs async client for production load.
+2. **FK constraints**: `student_profiles.user_id` references `auth.users` — dev-mode UUIDs may not exist. Backend handles with graceful fallback.
+3. **QA cache not integrated in loop**: Cache infrastructure exists but isn't queried before Groq calls yet (Phase 2 task).
+4. **Telegram webhook placeholder**: Handler structure exists but `process_webhook_update()` is empty.
+5. **No streaming**: Responses are returned in full — no SSE/streaming support yet.
+
+---
+
+## 12. Next Backend Tasks (Priority Order)
+
+### Immediate (Phase 2 Start)
+1. **Wire QA cache into agent loop** — check `match_qa_cache` RPC before calling Groq, save responses after successful generation
+2. **Quiz generation route** — `POST /api/quiz/generate` using practice_questions + LLM fallback
+3. **Answer checking route** — `POST /api/quiz/check` with weak_area auto-update
+4. **Profile creation route** — `POST /api/student/profile` for frontend onboarding
+
+### Short-term
+5. **Chapter summary route** — aggregate chunks per chapter, LLM-summarize
+6. **Response metadata** — return latency breakdown, similarity scores, strategies used
+7. **CLI testing** — verify full end-to-end flow with `scripts/chat_cli.py`
+
+### Medium-term (Phase 3)
+8. **Eval framework** — golden dataset, retrieval eval, answer quality eval
+9. **Telegram webhook** — complete message processing
+10. **Streaming** — SSE support for real-time response rendering
