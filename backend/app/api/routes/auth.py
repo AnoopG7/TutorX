@@ -82,8 +82,15 @@ async def signup(req: SignupRequest):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Signup error: {e}")
-        raise HTTPException(status_code=400, detail=f"Signup failed: {str(e)}")
+        error_msg = str(e)
+        logger.error(f"Signup error: {error_msg}")
+        logger.error(f"Error type: {type(e).__name__}")
+
+        # Log the full exception for debugging
+        import traceback
+        logger.error(f"Full traceback: {traceback.format_exc()}")
+
+        raise HTTPException(status_code=400, detail=f"Signup failed: {error_msg}")
 
 
 @router.post("/login", response_model=AuthResponse)
