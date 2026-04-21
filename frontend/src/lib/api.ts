@@ -105,8 +105,23 @@ class APIClient {
       data = { detail: response.statusText };
     }
 
+    console.log('📊 [Frontend] Response details:', {
+      status: response.status,
+      statusText: response.statusText,
+      ok: response.ok,
+      headers: {
+        contentType: response.headers.get('content-type'),
+        corsHeaders: response.headers.get('access-control-allow-origin')
+      },
+      body: data
+    });
+
     if (!response.ok) {
       const detail = data?.detail || data?.message || response.statusText;
+      console.error('❌ [Frontend] API Error:', {
+        status: response.status,
+        detail: detail
+      });
       throw new APIError(response.status, response.statusText, detail);
     }
 
@@ -127,6 +142,13 @@ class APIClient {
   }
 
   async signup(req: SignupRequest): Promise<AuthResponse> {
+    console.log('🔍 [Frontend] Signup request:', {
+      email: req.email,
+      name: req.name,
+      password: '••••••••••',
+      url: `${this.baseURL}/auth/signup`
+    });
+
     const response = await fetch(`${this.baseURL}/auth/signup`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -134,6 +156,13 @@ class APIClient {
     });
 
     const result = await this.handleResponse<AuthResponse>(response);
+
+    console.log('✅ [Frontend] Signup success:', {
+      user_id: result.user_id,
+      name: result.name,
+      token: result.token ? result.token.substring(0, 20) + '...' : 'none'
+    });
+
     this.setAuthToken(result.token);
     return result;
   }
