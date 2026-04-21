@@ -31,11 +31,33 @@ export default function ChatPage() {
   // Load messages from backend when session ID changes
   useEffect(() => {
     if (sessionId && userId) {
-      // TODO: Fetch from backend endpoint to get previous conversation
-      // GET /api/sessions/{sessionId} or similar
-      console.log('TODO: Fetch messages from backend for session:', sessionId);
+      loadSessionHistory();
     }
   }, [sessionId, userId]);
+
+  const loadSessionHistory = async () => {
+    if (!sessionId || !userId) return;
+
+    try {
+      setLoading(true);
+      const response = await apiClient.getSessionHistory(userId, sessionId);
+
+      // Convert API response format to Message format
+      const formattedMessages: Message[] = response.messages.map((msg: any) => ({
+        id: msg.id || nanoid(),
+        role: msg.role,
+        content: msg.content,
+      }));
+
+      setMessages(formattedMessages);
+      console.log('✅ Loaded session history:', formattedMessages.length, 'messages');
+    } catch (error) {
+      console.error('Failed to load session history:', error);
+      setMessages([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSendMessage = async (userMessage: string) => {
     if (!userId) return;
