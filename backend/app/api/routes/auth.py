@@ -31,20 +31,35 @@ async def signup(req: SignupRequest):
     try:
         client = get_supabase_client()
 
+        logger.info(f"=== SIGNUP FLOW STARTED ===")
+        logger.info(f"Email: {req.email}, Name: {req.name}")
+
         # Use admin API to create user (must use SERVICE_ROLE_KEY)
-        auth_response = client.auth.admin.create_user(
-            attributes={
-                "email": req.email,
-                "password": req.password,
-                "email_confirm": True,  # Auto-confirm email in dev mode
-            }
-        )
+        logger.info(f"Calling admin.create_user() with attributes:")
+        logger.info(f"  - email: {req.email}")
+        logger.info(f"  - password: ••••••••••")
+        logger.info(f"  - email_confirm: True")
+        try:
+            auth_response = client.auth.admin.create_user(
+                attributes={
+                    "email": req.email,
+                    "password": req.password,
+                    "email_confirm": True,  # Auto-confirm email in dev mode
+                }
+            )
+            logger.info(f"✅ Admin API call succeeded")
+        except Exception as admin_error:
+            logger.error(f"❌ Admin API call failed")
+            logger.error(f"   Error type: {type(admin_error).__name__}")
+            logger.error(f"   Error message: {str(admin_error)}")
+            logger.error(f"   Full exception: {admin_error}")
+            raise
 
         if not auth_response.user:
             raise HTTPException(status_code=400, detail="Signup failed - could not create user")
 
         user_id = str(auth_response.user.id)
-        logger.info(f"Created user via admin API: {user_id}")
+        logger.info(f"✅ Created user via admin API: {user_id}")
 
         # Create student profile in database
         try:
@@ -83,12 +98,21 @@ async def signup(req: SignupRequest):
         raise
     except Exception as e:
         error_msg = str(e)
-        logger.error(f"Signup error: {error_msg}")
-        logger.error(f"Error type: {type(e).__name__}")
+        error_type = type(e).__name__
 
-        # Log the full exception for debugging
+        logger.error(f"")
+        logger.error(f"❌ SIGNUP FAILED")
+        logger.error(f"   Error Type: {error_type}")
+        logger.error(f"   Error Message: {error_msg}")
+        logger.error(f"   Full Exception: {e}")
+
+        # Try to extract more details
+        if hasattr(e, '__dict__'):
+            logger.error(f"   Exception Attributes: {e.__dict__}")
+
         import traceback
-        logger.error(f"Full traceback: {traceback.format_exc()}")
+        logger.error(f"   Traceback:\n{traceback.format_exc()}")
+        logger.error(f"")
 
         raise HTTPException(status_code=400, detail=f"Signup failed: {error_msg}")
 
