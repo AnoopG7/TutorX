@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-
 import { ThemeProvider } from '@/providers/ThemeProvider';
 import { AuthProvider } from '@/providers/AuthProvider';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
+import { BackendStartupBanner } from '@/components/BackendStartupBanner';
 import { Navbar } from '@/components/layout/Navbar';
 import HomePage from '@/pages/HomePage';
 import LoginPage from '@/pages/LoginPage';
@@ -14,6 +15,7 @@ function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
+        <BackendStartupBanner />
         <Router>
           <Routes>
             {/* Public Routes */}
