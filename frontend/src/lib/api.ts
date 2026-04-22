@@ -95,7 +95,16 @@ export class APIError extends Error {
 }
 
 class APIClient {
-  private baseURL = '/api';
+  // In prod, set VITE_API_URL to your backend origin (e.g. https://tutorx-backend.onrender.com)
+  // In dev without it, uses '/api' which Vite proxies to localhost:8000
+  private baseURL = (() => {
+    const url = import.meta.env.VITE_API_URL;
+    if (url) {
+      // Strip trailing slash, append /api
+      return url.replace(/\/+$/, '') + '/api';
+    }
+    return '/api';
+  })();
 
   private getAuthToken(): string | null {
     return localStorage.getItem('auth-token');

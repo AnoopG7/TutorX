@@ -3,7 +3,7 @@
  * Input stays floating at bottom with padding, messages scroll above
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { MessageBubble } from "./MessageBubble";
 import { ChatInput } from "./ChatInput";
 import { ArrowDown, Sparkles } from "lucide-react";
@@ -34,7 +34,6 @@ export function ChatInterface({
 }: ChatInterfaceProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [showScrollButton, setShowScrollButton] = useState(false);
 
   // Auto-scroll to bottom on new messages, but only if user was at bottom
   useEffect(() => {
@@ -47,14 +46,6 @@ export function ChatInterface({
   }, [messages]);
 
   // Check scroll position to toggle button visibility
-  const handleScroll = () => {
-    const container = containerRef.current;
-    if (!container) return;
-    const { scrollTop, scrollHeight, clientHeight } = container;
-    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-    setShowScrollButton(distanceFromBottom > 100);
-  };
-
   const scrollToBottom = () => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -64,7 +55,6 @@ export function ChatInterface({
       {/* Messages scrollable area - takes remaining space */}
       <div
         ref={containerRef}
-        onScroll={handleScroll}
         className="flex-1 overflow-y-auto pb-32"
       >
         <div className="max-w-2xl mx-auto flex flex-col gap-6 px-4 pt-6">
