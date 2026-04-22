@@ -50,6 +50,7 @@ export interface ProfileResponse {
   grade: number;
   subjects: string[];
   teaching_style: 'definition_first' | 'analogy_first' | 'example_first' | 'socratic';
+  custom_instructions?: string;
   weak_areas: Array<{ topic: string; score?: number; last_attempted?: string }>;
   mastered_topics: string[];
   total_sessions: number;

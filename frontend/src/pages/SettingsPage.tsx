@@ -38,6 +38,7 @@ export default function SettingsPage() {
       grade: 9,
       subjects: [],
       teaching_style: 'example_first',
+      custom_instructions: '',
     },
   });
 
@@ -49,6 +50,7 @@ export default function SettingsPage() {
         grade: profile.grade || 9,
         subjects: profile.subjects || [],
         teaching_style: (profile.teaching_style as TeachingStyle) || 'example_first',
+        custom_instructions: profile.custom_instructions || '',
       });
     }
   }, [profile, profileLoading, reset]);
@@ -258,6 +260,26 @@ export default function SettingsPage() {
                     {errors.teaching_style.message}
                   </p>
                 )}
+              </div>
+
+              {/* Custom Instructions */}
+              <div className="space-y-3">
+                <label className="block text-sm font-medium text-foreground">
+                  Custom Instructions
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  Add personal instructions to customize how TutorX responds (e.g., "Use simple Hindi-English mixed sentences")
+                </p>
+                <textarea
+                  {...register('custom_instructions')}
+                  rows={4}
+                  maxLength={500}
+                  placeholder="E.g., Speak in simple words, use examples from daily life..."
+                  className="w-full p-4 rounded-lg border-2 border-border bg-muted text-foreground placeholder:text-muted-foreground/60 focus:border-primary focus:outline-none resize-none"
+                />
+                <p className="text-xs text-muted-foreground text-right">
+                  {profile?.custom_instructions?.length || 0}/500 characters
+                </p>
               </div>
             </div>
 

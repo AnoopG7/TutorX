@@ -17,6 +17,7 @@ export const profileSchema = z.object({
     'example_first',
     'socratic',
   ]),
+  custom_instructions: z.string().max(500, 'Instructions must be less than 500 characters').optional(),
 });
 
 // Chat message input schema

@@ -20,6 +20,7 @@ CREATE TABLE student_profiles (
   -- Agent memory fields
   teaching_style VARCHAR(50) DEFAULT 'definition_first'
     CHECK (teaching_style IN ('definition_first', 'analogy_first', 'example_first', 'socratic')),
+  custom_instructions TEXT DEFAULT '',  -- User's personalized instructions to the AI tutor
   weak_areas   JSONB   DEFAULT '[]',   -- [{topic, score, last_attempted}]
   mastered_topics TEXT[] DEFAULT '{}',
   quiz_history JSONB   DEFAULT '[]',   -- [{topic, score, date}]
