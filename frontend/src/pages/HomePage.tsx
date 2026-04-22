@@ -66,7 +66,7 @@ export default function HomePage() {
         <div className="mx-auto max-w-7xl px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-violet-500 to-amber-500" />
-            <span className="font-bold text-lg">CBSE Study</span>
+            <span className="font-bold text-lg">TutorX Study</span>
           </div>
           <div className="flex items-center gap-4">
             <button
@@ -87,10 +87,10 @@ export default function HomePage() {
       <section className="mx-auto max-w-7xl px-4 py-20 text-center">
         <div className="space-y-6">
           <h1 className="text-5xl md:text-6xl font-bold text-foreground">
-            Your AI Study Companion for <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-500 to-amber-500">CBSE Success</span>
+            Your AI Study Companion for <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-500 to-amber-500">TutorX </span>
           </h1>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-            Get personalized explanations, solve doubts instantly, and master any CBSE topic with our AI-powered tutoring system.
+            Get personalized explanations, solve doubts instantly, and master any NCERT topic with our AI-powered tutoring system.
           </p>
           <div className="flex gap-4 justify-center pt-4">
             <Button size="lg" onClick={() => navigate('/signup')} className="gap-2">
@@ -145,7 +145,7 @@ export default function HomePage() {
       <section className="mx-auto max-w-7xl px-4 py-20">
         <div className="text-center mb-16">
           <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">
-            Why Choose CBSE Study?
+            Why Choose TutorX?
           </h2>
           <p className="text-lg text-muted-foreground">
             The perfect tool for CBSE students
@@ -230,7 +230,7 @@ export default function HomePage() {
       {/* Footer */}
       <footer className="border-t border-border bg-background/50 py-8 mt-20">
         <div className="mx-auto max-w-7xl px-4 text-center text-muted-foreground text-sm">
-          <p>&copy; 2026 CBSE Study Agent. Free forever for all students.</p>
+          <p>&copy; 2026 TutorX. Free forever for all students.</p>
         </div>
       </footer>
     </div>

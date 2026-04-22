@@ -30,6 +30,8 @@ export const SUBJECTS = {
   },
 } as const;
 
+export type SubjectConfig = typeof SUBJECTS[Subject];
+
 export const TEACHING_STYLES = [
   {
     id: 'definition_first',

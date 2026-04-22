@@ -7,29 +7,36 @@ import { apiClient, type ProfileResponse } from '@/lib/api';
 
 export function useProfile(userId: string) {
   const [profile, setProfile] = useState<ProfileResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!userId);
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
-    if (!userId) {
-      setLoading(false);
-      return;
-    }
+    if (!userId) return;
 
+    let cancelled = false;
     const fetchProfile = async () => {
       try {
         setLoading(true);
         const data = await apiClient.getProfile(userId);
-        setProfile(data);
-        setError(null);
+        if (!cancelled) {
+          setProfile(data);
+          setError(null);
+        }
       } catch (err) {
-        setError(err instanceof Error ? err : new Error('Failed to fetch profile'));
+        if (!cancelled) {
+          setError(err instanceof Error ? err : new Error('Failed to fetch profile'));
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     };
 
     fetchProfile();
+    return () => {
+      cancelled = true;
+    };
   }, [userId]);
 
   const updateProfile = async (updates: Partial<ProfileResponse>) => {

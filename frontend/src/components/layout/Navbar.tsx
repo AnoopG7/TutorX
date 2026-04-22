@@ -36,7 +36,7 @@ export function Navbar() {
           <Link to="/" className="flex shrink-0 items-center gap-2">
             <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-violet-500 to-amber-500" />
             <span className="font-semibold text-lg hidden sm:inline">
-              CBSE Study
+              TutorX
             </span>
           </Link>
 

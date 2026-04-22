@@ -107,7 +107,7 @@ export default function SignupPage() {
           <div className="mb-8 text-center">
             <Link to="/home" className="inline-flex items-center gap-2 mb-6">
               <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-violet-500 to-amber-500" />
-              <span className="font-semibold text-lg">CBSE Study</span>
+              <span className="font-semibold text-lg">TutorX</span>
             </Link>
             <h1 className="text-2xl font-bold text-foreground">Create your account</h1>
             <p className="text-muted-foreground mt-1 text-sm">Start learning with AI-powered tutoring</p>

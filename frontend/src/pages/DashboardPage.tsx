@@ -127,7 +127,7 @@ export default function DashboardPage() {
           <div className="flex-1 text-left">
             <p className="text-sm font-medium text-foreground">Start a new conversation</p>
             <p className="text-xs text-muted-foreground">
-              Ask about any CBSE topic — Science, Math, or Social Studies
+              Ask about any TutorX topic — Science, Math, or Social Studies
             </p>
           </div>
           <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all" />

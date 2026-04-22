@@ -6,6 +6,7 @@
 export interface SessionMessage {
   role: 'user' | 'assistant';
   content: string;
+  id?: string;
 }
 
 export interface SessionHistoryResponse {
@@ -109,9 +110,9 @@ class APIClient {
   }
 
   private async handleResponse<T>(response: Response): Promise<T> {
-    let data: any;
+    let data: Record<string, unknown>;
     try {
-      data = await response.json();
+      data = await response.json() as Record<string, unknown>;
     } catch {
       data = { detail: response.statusText };
     }
@@ -133,7 +134,7 @@ class APIClient {
         status: response.status,
         detail: detail
       });
-      throw new APIError(response.status, response.statusText, detail);
+      throw new APIError(response.status, response.statusText, String(detail));
     }
 
     return data as T;

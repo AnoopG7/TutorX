@@ -11,7 +11,7 @@ import { useThemeContext } from '@/providers/ThemeProvider';
 import { Button } from '@/components/ui/button';
 import { FormInput, FormSelect } from '@/components/forms';
 import { profileSchema, type ProfileFormData } from '@/lib/schemas';
-import { SUBJECTS, TEACHING_STYLES, type Subject } from '@/lib/constants';
+import { SUBJECTS, TEACHING_STYLES, type Subject, type TeachingStyle, type SubjectConfig } from '@/lib/constants';
 import { Sun, Moon, Monitor, Check, AlertCircle, Loader2 } from 'lucide-react';
 
 export default function SettingsPage() {
@@ -48,7 +48,7 @@ export default function SettingsPage() {
         name: profile.name || '',
         grade: profile.grade || 9,
         subjects: profile.subjects || [],
-        teaching_style: (profile.teaching_style as any) || 'example_first',
+        teaching_style: (profile.teaching_style as TeachingStyle) || 'example_first',
       });
     }
   }, [profile, profileLoading, reset]);
@@ -86,8 +86,11 @@ export default function SettingsPage() {
     <div className="min-h-screen bg-background p-4 sm:p-8">
       <div className="mx-auto max-w-2xl space-y-8">
         <div className="text-center space-y-2">
-          <h1 className="text-4xl font-bold text-foreground">Settings</h1>
-          <p className="text-muted-foreground">Customize your learning experience</p>
+          <div className="h-16 w-16 rounded-full bg-gradient-to-br from-violet-500 to-amber-500 mx-auto flex items-center justify-center text-white text-2xl font-bold">
+            {profile?.name?.[0]?.toUpperCase() || user?.name?.[0]?.toUpperCase() || '?'}
+          </div>
+          <h1 className="text-3xl font-bold text-foreground">{profile?.name || user?.name || 'Student'}</h1>
+          <p className="text-muted-foreground">Grade {profile?.grade || 9}</p>
         </div>
 
         {/* Feedback Message */}
@@ -160,7 +163,7 @@ export default function SettingsPage() {
                   control={control}
                   render={({ field }) => (
                     <div className="grid grid-cols-2 gap-3">
-                      {(Object.entries(SUBJECTS) as Array<[Subject, any]>).map(
+                      {(Object.entries(SUBJECTS) as Array<[Subject, SubjectConfig]>).map(
                         ([subject, { icon }]) => {
                           const isSelected = field.value.includes(subject);
                           return (
