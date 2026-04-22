@@ -6,6 +6,7 @@ groq>=0.9.0
 httpx>=0.27.0
 pydantic>=2.7.0
 pydantic-settings>=2.3.0
+pydantic[email]>=2.7.0
 
 # Agent framework — llama-index 0.12+ ecosystem (all packages must align)
 llama-index-core>=0.12.0
