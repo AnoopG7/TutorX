@@ -22,14 +22,8 @@ class Settings(BaseSettings):
     telegram_token: str = ""
     telegram_webhook_url: str = ""
 
-    # CORS
-    cors_origins: list = [
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://localhost:5174",
-        "http://localhost:5175",
-        "https://*.vercel.app",
-    ]
+    # CORS - from CORS_ORIGINS env var (comma-separated URLs on Render dashboard)
+    cors_origins: str = ""
 
     # Environment
     environment: str = "development"
@@ -38,6 +32,13 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = False
+
+    def get_cors_origins(self) -> list[str]:
+        """Parse comma-separated CORS origins from env var."""
+        if not self.cors_origins:
+            return ["http://localhost:3000", "http://localhost:5173"]
+        origins = [url.strip() for url in self.cors_origins.split(",")]
+        return origins
 
 
 @lru_cache()
