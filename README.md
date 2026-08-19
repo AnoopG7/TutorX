@@ -10,7 +10,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![React](https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev)
 [![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3FCF8E?style=for-the-badge&logo=supabase&logoColor=white)](https://supabase.com)
-[![Groq](https://img.shields.io/badge/Groq-LLaMA_3.3_70B-FF6B00?style=for-the-badge&logoColor=white)](https://groq.com)
+[![Groq](https://img.shields.io/badge/Groq-GPT_OSS_120B-FF6B00?style=for-the-badge&logoColor=white)](https://groq.com)
 
 </div>
 
@@ -204,7 +204,7 @@ This architecture **eliminates timeouts and rate limits** entirely. The original
 | Styling | TailwindCSS 4 + shadcn/ui | Design system |
 | Forms | react-hook-form + Zod | Validation |
 | Backend | FastAPI + Python 3.12 | REST API |
-| LLM | Groq `llama-3.3-70b-versatile` | Response generation |
+| LLM | Groq `openai/gpt-oss-120b` | Response generation |
 | Embeddings | Ollama `nomic-embed-text` (768-dim) | Local vector embeddings |
 | Database | Supabase PostgreSQL + pgvector | Storage + vector search |
 | Auth | Supabase Auth | JWT-based authentication |

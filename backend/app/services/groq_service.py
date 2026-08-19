@@ -1,7 +1,7 @@
 """
 Groq Service — singleton wrapper for LLM calls.
 
-Uses the model from settings (defaults to llama-3.3-70b-versatile).
+Uses the model from settings (defaults to openai/gpt-oss-120b).
 Does NOT provide embeddings — use Ollama nomic-embed-text for that.
 """
 import logging
