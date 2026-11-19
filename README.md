@@ -110,9 +110,9 @@ User Message
 └─────────────────────────┘
 ```
 
-**Worst case: 1 LLM call. Best case: 1 LLM call. Typical case: 1 LLM call.** The reformulation and enrichment calls are conditional and lightweight -- they only fire when needed and use lower token budgets (150 and 300 tokens respectively).
+**1 to 3 LLM calls per question.** Generation always runs; the reformulation and enrichment calls are conditional and lightweight -- they only fire when needed and use lower token budgets (150 and 300 tokens respectively).
 
-This architecture **eliminates timeouts and rate limits** entirely. The original ReAct agent design required 14+ Groq calls per question and frequently hit timeouts. The current design completes in under 3 seconds.
+The original ReAct agent design needed 14+ Groq calls per question and frequently timed out; the deterministic pipeline replaced it.
 
 ---
 
@@ -134,9 +134,10 @@ This architecture **eliminates timeouts and rate limits** entirely. The original
 | Feature | Details |
 |---------|---------|
 | **80 NCERT PDFs Ingested** | Science (13), Math (15), Economics (4), English (18), Geography (6), Hindi (14), History (5), Political Science (5) |
-| **1,389 Textbook Chunks** | 450-token overlapping chunks with 50-token overlap for context continuity |
-| **Chapter/Section Detection** | Regex-based heading extraction from NCERT PDF structure |
-| **Verification System** | All chunks inserted as `is_verified=FALSE` for manual review before production |
+| **1,581 Textbook Chunks** | ~300-word chunks with 50-word overlap, each tagged with chapter, section and printed page number |
+| **Chapter/Section/Page Metadata** | Chapter titles rebuilt from NCERT's shadow-font headings, numbered section headings, and printed book page numbers (inferred from neighbouring chapters when a file has none) |
+| **Hindi Support** | NCERT's Hindi PDFs use the legacy Kruti Dev font; text is converted to Unicode Devanagari before embedding |
+| **Retrieval Evaluation** | `scripts/eval_retrieval.py`: 58 questions with known chapters. Exact search: **hit@1 78%, hit@5 91%** |
 | **Grounding Flag** | Every answer reports whether textbook passages were found, and the UI says so when they weren't |
 
 ### Student Profile & Progress
@@ -263,8 +264,10 @@ cbse-study-agent/
 │   │       └── telegram_webhook.py          # Telegram bot
 │   └── scripts/
 │       ├── ingest.py                        # Single PDF ingestion
-│       ├── batch_ingest.py                  # Batch all subjects
-│       ├── batch_ingest_new.py              # Incremental ingest
+│       ├── reingest.py                      # Ingest all NCERT PDFs with chapter/page metadata
+│       ├── ncert_pdf.py                     # Title + printed-page extraction helpers
+│       ├── krutidev.py                      # Kruti Dev → Unicode (Hindi)
+│       ├── eval_retrieval.py                # Retrieval accuracy benchmark
 │       ├── seed_tutorx.py                   # DB seeding
 │       └── chat_cli.py                      # Interactive terminal chat
 ├── frontend/
@@ -314,8 +317,9 @@ cp .env.example .env
 # Run db_schema.sql + rag/rpc_functions.sql in Supabase SQL Editor
 
 # Ingest PDFs
-python -m scripts.batch_ingest          # All subjects
-python -m scripts.batch_ingest_new      # Only new subjects
+python -m scripts.reingest --dry-run    # Preview chapters/pages for every PDF
+python -m scripts.reingest              # Embed all PDFs and replace textbook_chunks
+python -m scripts.eval_retrieval        # Measure retrieval accuracy (hit@1 / hit@5)
 
 # Start backend
 python -m app.main
