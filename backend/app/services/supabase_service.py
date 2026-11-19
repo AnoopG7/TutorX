@@ -70,7 +70,9 @@ def new_auth_client() -> Client:
     return create_client(
         settings.supabase_url,
         key,
-        options=SyncClientOptions(auto_refresh_token=False, persist_session=False),
+        # implicit flow: reset emails link to /reset-password#access_token=…&type=recovery.
+        # The default PKCE flow would need a code verifier stored on this throwaway client.
+        options=SyncClientOptions(auto_refresh_token=False, persist_session=False, flow_type="implicit"),
     )
 
 

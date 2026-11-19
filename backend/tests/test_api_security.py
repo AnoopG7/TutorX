@@ -173,3 +173,13 @@ def test_chunks_to_sources_groups_pages():
     assert len(sources) == 2
     assert sources[0]["pages"] == ["76", "77"] and sources[0]["similarity"] == 0.88
     assert sources[1]["pages"] == [] and sources[1]["section"] == "4.4 Completing the square"
+
+
+def test_auth_client_uses_implicit_flow(monkeypatch):
+    """Reset links must carry #access_token (implicit), which ResetPasswordPage reads."""
+    import app.services.supabase_service as svc
+    captured = {}
+    monkeypatch.setattr(svc, "create_client", lambda url, key, options=None: captured.setdefault("options", options))
+    svc.new_auth_client()
+    assert captured["options"].flow_type == "implicit"
+    assert captured["options"].persist_session is False
