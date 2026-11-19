@@ -1,27 +1,18 @@
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/providers/AuthProvider';
+import { LogoMark } from '@/components/brand/Logo';
 
-interface ProtectedRouteProps {
-  children: React.ReactNode;
-}
-
-export function ProtectedRoute({ children }: ProtectedRouteProps) {
+export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, loading } = useAuth();
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-          <p className="text-muted-foreground mt-4">Loading...</p>
-        </div>
+      <div className="flex min-h-dvh items-center justify-center" role="status" aria-label="Loading">
+        <LogoMark className="h-9 w-8 animate-pulse" />
       </div>
     );
   }
 
-  if (!isAuthenticated) {
-    return <Navigate to="/home" replace />;
-  }
-
+  if (!isAuthenticated) return <Navigate to="/home" replace />;
   return <>{children}</>;
 }

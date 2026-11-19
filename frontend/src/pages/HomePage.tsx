@@ -1,238 +1,206 @@
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '@/providers/AuthProvider';
 import { useEffect } from 'react';
-import { BookOpen, Zap, Award, Users, ArrowRight, Sun, Moon } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Link, useNavigate } from 'react-router-dom';
+import { BookMarked, Moon, Sun } from 'lucide-react';
+import { useAuth } from '@/providers/AuthProvider';
 import { useThemeContext } from '@/providers/ThemeProvider';
+import { Logo } from '@/components/brand/Logo';
+import { BackendStartupBanner } from '@/components/BackendStartupBanner';
+import { SUBJECT_LIST } from '@/lib/constants';
+import { cn } from '@/lib/utils';
+
+const PIPELINE = [
+  {
+    title: 'Your question is matched against the book',
+    body: 'Every page of the NCERT Class 9 books is split into passages and indexed. Your question is compared with all of them to find the closest ones.',
+  },
+  {
+    title: 'Weak matches get a second search',
+    body: 'If nothing fits well, the question is rephrased a few different ways and searched again, so casual wording still finds the right section.',
+  },
+  {
+    title: 'The best passage is prepared for teaching',
+    body: 'The top passage gets an everyday example, a common mistake to avoid, and a link to related ideas.',
+  },
+  {
+    title: 'You get an answer in your style',
+    body: 'The tutor writes the answer from those passages the way you like to learn, and shows the chapter and page it came from.',
+  },
+];
 
 export default function HomePage() {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
-  const { theme, toggleTheme } = useThemeContext();
+  const { resolvedTheme, toggleTheme } = useThemeContext();
 
-  // Redirect to dashboard if already logged in
   useEffect(() => {
-    if (isAuthenticated) {
-      navigate('/');
-    }
+    if (isAuthenticated) navigate('/', { replace: true });
   }, [isAuthenticated, navigate]);
 
-  const features = [
-    {
-      icon: BookOpen,
-      title: 'AI-Powered Learning',
-      description: 'Get personalized explanations for any CBSE topic using advanced AI',
-    },
-    {
-      icon: Zap,
-      title: 'Instant Answers',
-      description: 'Ask questions and get detailed answers in seconds, anytime',
-    },
-    {
-      icon: Award,
-      title: 'Track Progress',
-      description: 'Monitor your learning journey and identify weak areas',
-    },
-    {
-      icon: Users,
-      title: 'Multi-Device Sync',
-      description: 'Access your learning sessions across all your devices',
-    },
-  ];
-
-  const benefits = [
-    {
-      title: 'Grades 9-12',
-      description: 'Complete CBSE curriculum coverage',
-    },
-    {
-      title: '24/7 Available',
-      description: 'Study at your own pace, anytime',
-    },
-    {
-      title: 'Free Forever',
-      description: 'No credit card required',
-    },
-    {
-      title: 'Multiple Subjects',
-      description: 'Math, Science, English, Hindi & SST',
-    },
-  ];
-
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background to-muted">
-      {/* Navigation */}
-      <nav className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="mx-auto max-w-7xl px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-violet-500 to-amber-500" />
-            <span className="font-bold text-lg">TutorX Study</span>
-          </div>
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => toggleTheme(theme === 'dark' ? 'light' : 'dark')}
-              className="p-2 hover:bg-muted rounded-lg transition-colors"
-            >
-              {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            </button>
-            <Button variant="outline" onClick={() => navigate('/login')}>
-              Sign In
-            </Button>
-            <Button onClick={() => navigate('/signup')}>Get Started</Button>
-          </div>
-        </div>
-      </nav>
+    <div className="min-h-dvh bg-background">
+      <BackendStartupBanner />
+      <header className="mx-auto flex max-w-6xl items-center justify-between px-4 py-5 sm:px-6">
+        <Logo to="/home" />
+        <nav className="flex items-center gap-1 sm:gap-2">
+          <button
+            onClick={() => toggleTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
+            className="rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
+            aria-label={resolvedTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+          >
+            {resolvedTheme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          </button>
+          <Link to="/login" className="rounded-md px-3 py-2 text-sm font-medium hover:bg-muted">
+            Sign in
+          </Link>
+          <Link
+            to="/signup"
+            className="rounded-md bg-primary px-3.5 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+          >
+            Create account
+          </Link>
+        </nav>
+      </header>
 
-      {/* Hero Section */}
-      <section className="mx-auto max-w-7xl px-4 py-20 text-center">
-        <div className="space-y-6">
-          <h1 className="text-5xl md:text-6xl font-bold text-foreground">
-            Your AI Study Companion for <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-500 to-amber-500">TutorX </span>
+      {/* Hero */}
+      <section className="mx-auto grid max-w-6xl items-center gap-12 px-4 pb-20 pt-10 sm:px-6 lg:grid-cols-[1fr_1.05fr] lg:pt-16">
+        <div>
+          <h1 className="font-serif text-[2.6rem] font-semibold leading-[1.08] tracking-[-0.02em] sm:text-[3.6rem]">
+            A tutor that answers from your NCERT textbook.
           </h1>
-          <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-            Get personalized explanations, solve doubts instantly, and master any NCERT topic with our AI-powered tutoring system.
+          <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground">
+            Ask any doubt from Class 9 Science, Maths, Social Science, English or Hindi. TutorX finds the passage in
+            your book, explains it the way you learn best, and shows you the chapter and page it came from.
           </p>
-          <div className="flex gap-4 justify-center pt-4">
-            <Button size="lg" onClick={() => navigate('/signup')} className="gap-2">
-              Start Learning Free <ArrowRight className="h-4 w-4" />
-            </Button>
-            <Button size="lg" variant="outline" onClick={() => navigate('/login')}>
-              Already have an account?
-            </Button>
-          </div>
-        </div>
-
-        {/* Hero Image */}
-        <div className="mt-12 rounded-xl border border-border bg-card p-8 backdrop-blur">
-          <div className="aspect-video bg-gradient-to-br from-violet-500/20 to-amber-500/20 rounded-lg flex items-center justify-center">
-            <div className="text-center space-y-4">
-              <BookOpen className="h-16 w-16 mx-auto text-primary/50" />
-              <p className="text-muted-foreground">Interactive learning interface</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Features Section */}
-      <section className="mx-auto max-w-7xl px-4 py-20">
-        <div className="text-center mb-16">
-          <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">
-            Powerful Features
-          </h2>
-          <p className="text-lg text-muted-foreground">
-            Everything you need to excel in your studies
-          </p>
-        </div>
-
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {features.map((feature, idx) => {
-            const Icon = feature.icon;
-            return (
-              <div
-                key={idx}
-                className="rounded-lg border border-border bg-card p-6 hover:border-primary/50 transition-colors"
-              >
-                <Icon className="h-10 w-10 text-primary mb-4" />
-                <h3 className="font-semibold text-foreground mb-2">{feature.title}</h3>
-                <p className="text-sm text-muted-foreground">{feature.description}</p>
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* Benefits Section */}
-      <section className="mx-auto max-w-7xl px-4 py-20">
-        <div className="text-center mb-16">
-          <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">
-            Why Choose TutorX?
-          </h2>
-          <p className="text-lg text-muted-foreground">
-            The perfect tool for CBSE students
-          </p>
-        </div>
-
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {benefits.map((benefit, idx) => (
-            <div
-              key={idx}
-              className="rounded-lg bg-gradient-to-br from-violet-500/10 to-amber-500/10 border border-border p-6 text-center"
+          <div className="mt-8 flex flex-wrap gap-3">
+            <Link
+              to="/signup"
+              className="rounded-md bg-primary px-5 py-3 text-sm font-medium text-primary-foreground hover:opacity-90"
             >
-              <h3 className="font-semibold text-foreground mb-2">{benefit.title}</h3>
-              <p className="text-sm text-muted-foreground">{benefit.description}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* How It Works */}
-      <section className="mx-auto max-w-7xl px-4 py-20">
-        <div className="text-center mb-16">
-          <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">
-            How It Works
-          </h2>
-        </div>
-
-        <div className="grid md:grid-cols-3 gap-8">
-          {[
-            {
-              step: '1',
-              title: 'Sign Up',
-              description: 'Create your free account in seconds',
-            },
-            {
-              step: '2',
-              title: 'Ask Questions',
-              description: 'Type any doubt or concept you want to learn',
-            },
-            {
-              step: '3',
-              title: 'Get Answers',
-              description: 'Receive detailed, personalized explanations instantly',
-            },
-          ].map((item, idx) => (
-            <div key={idx} className="relative">
-              <div className="flex items-center gap-4 mb-4">
-                <div className="h-12 w-12 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold text-lg">
-                  {item.step}
-                </div>
-                {idx < 2 && (
-                  <div className="absolute left-20 top-6 w-12 h-0.5 bg-gradient-to-r from-primary to-transparent" />
-                )}
-              </div>
-              <h3 className="font-semibold text-foreground mb-2">{item.title}</h3>
-              <p className="text-muted-foreground">{item.description}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* CTA Section */}
-      <section className="mx-auto max-w-7xl px-4 py-20">
-        <div className="rounded-xl bg-gradient-to-r from-violet-500/10 to-amber-500/10 border border-primary/20 p-12 text-center space-y-6">
-          <h2 className="text-3xl md:text-4xl font-bold text-foreground">
-            Ready to Excel?
-          </h2>
-          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-            Join thousands of CBSE students already using AI to master their subjects
-          </p>
-          <div className="flex gap-4 justify-center">
-            <Button size="lg" onClick={() => navigate('/signup')} className="gap-2">
-              Get Started Free <ArrowRight className="h-4 w-4" />
-            </Button>
-            <Button size="lg" variant="outline" onClick={() => navigate('/login')}>
-              Sign In
-            </Button>
+              Start studying, it’s free
+            </Link>
+            <Link to="/login" className="rounded-md border border-border bg-card px-5 py-3 text-sm font-medium hover:bg-muted">
+              I have an account
+            </Link>
           </div>
         </div>
+
+        <Specimen />
       </section>
 
-      {/* Footer */}
-      <footer className="border-t border-border bg-background/50 py-8 mt-20">
-        <div className="mx-auto max-w-7xl px-4 text-center text-muted-foreground text-sm">
-          <p>&copy; 2026 TutorX. Free forever for all students.</p>
+      {/* How an answer is made: a real sequence, so numbered. */}
+      <section className="border-y border-border bg-card">
+        <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
+          <h2 className="max-w-xl font-serif text-3xl font-semibold tracking-tight">How an answer is made</h2>
+          <p className="mt-3 max-w-xl text-muted-foreground">
+            Retrieval-augmented generation, in four steps. The book comes first, and the AI explains it.
+          </p>
+          <ol className="mt-12 grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
+            {PIPELINE.map((step, i) => (
+              <li key={step.title} className="relative">
+                <span className="font-serif text-4xl font-semibold text-primary/25">{i + 1}</span>
+                <h3 className="mt-2 font-medium leading-snug">{step.title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{step.body}</p>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </section>
+
+      {/* Subjects */}
+      <section className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
+        <div className="grid gap-10 lg:grid-cols-[1fr_2fr]">
+          <div>
+            <h2 className="font-serif text-3xl font-semibold tracking-tight">Every Class 9 book</h2>
+            <p className="mt-3 text-muted-foreground">
+              Ask across all of them, or choose one subject so answers only come from that book.
+            </p>
+          </div>
+          <ul className="divide-y divide-border border-y border-border">
+            {SUBJECT_LIST.map((s) => (
+              <li key={s.id} className="flex items-center gap-4 py-4">
+                <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-md', s.tint)}>
+                  <s.icon className={cn('h-[1.1rem] w-[1.1rem]', s.ink)} />
+                </span>
+                <span className="w-36 shrink-0 font-medium">{s.label}</span>
+                <span className="min-w-0 truncate text-sm text-muted-foreground">{s.books === s.label ? 'One textbook' : s.books}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+
+      {/* Closing */}
+      <section className="mx-auto max-w-6xl px-4 pb-24 sm:px-6">
+        <div className="rounded-xl bg-primary px-6 py-12 text-primary-foreground sm:px-12 dark:border dark:border-border dark:bg-card dark:text-foreground">
+          <h2 className="max-w-2xl font-serif text-3xl font-semibold leading-tight tracking-tight">
+            Stuck on a chapter tonight? Ask it now.
+          </h2>
+          <p className="mt-3 max-w-xl opacity-85">
+            Choose how you like to be taught: definitions, analogies, examples, or guiding questions.
+          </p>
+          <Link
+            to="/signup"
+            className="mt-7 inline-block rounded-md bg-primary-foreground px-5 py-3 text-sm font-medium text-primary hover:opacity-90 dark:bg-primary dark:text-primary-foreground"
+          >
+            Create a free account
+          </Link>
+        </div>
+      </section>
+
+      <footer className="border-t border-border">
+        <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-8 text-sm text-muted-foreground sm:flex-row sm:justify-between sm:px-6">
+          <p>TutorX is a student project and is not affiliated with NCERT or CBSE.</p>
+          <p>Built with React, FastAPI, pgvector and Groq.</p>
         </div>
       </footer>
     </div>
+  );
+}
+
+/** A static example of what an answer looks like, with its margin source. */
+function Specimen() {
+  return (
+    <figure
+      aria-label="Example answer"
+      className="relative rounded-xl border border-border bg-card p-5 shadow-[0_30px_60px_-30px_rgba(27,35,64,0.35)] sm:p-7"
+    >
+      <div className="flex justify-end">
+        <p className="max-w-[85%] rounded-2xl rounded-br-md bg-accent px-4 py-2.5 text-[0.95rem] text-accent-foreground">
+          Why is the cell called the basic unit of life?
+        </p>
+      </div>
+
+      <div className="mt-6 grid gap-6 sm:grid-cols-[1fr_10.5rem]">
+        <div className="reading text-[0.98rem]">
+          <p>
+            Every living thing, from a tiny amoeba to an elephant, is built from cells, and{' '}
+            <span className="marker">each cell carries out all the basic functions of life</span> on its own: it takes
+            in food, releases energy, gets rid of waste and makes new cells.
+          </p>
+          <p>
+            Think of a cell like a single brick in a wall. The wall is made of bricks, and each brick is complete in
+            itself.
+          </p>
+          <p className="text-muted-foreground">
+            <em>Quick check:</em> can a single-celled organism live on its own?
+          </p>
+        </div>
+
+        <figcaption className="border-t border-border pt-4 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0">
+          <p className="mb-2.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+            <BookMarked className="h-3.5 w-3.5" />
+            From your textbook
+          </p>
+          <div className="relative pl-3.5">
+            <span aria-hidden className="absolute bottom-1 left-0 top-1 w-[3px] rounded-full bg-highlight" />
+            <p className="text-[0.7rem] font-medium text-emerald-700 dark:text-[#A6CF97]">
+              Science <span className="text-muted-foreground">/ Chapter 5</span>
+            </p>
+            <p className="mt-0.5 font-serif text-[0.9rem] leading-snug">The Fundamental Unit of Life</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">5.1 What are living organisms made up of?</p>
+          </div>
+        </figcaption>
+      </div>
+    </figure>
   );
 }

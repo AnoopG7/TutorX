@@ -1,170 +1,237 @@
 /**
- * ChatPage — Chat interface with message management
+ * ChatPage — one study session.
+ *
+ * URL is the source of truth:
+ *   /chat                     → new question
+ *   /chat?subject=Science     → new question, scoped to a subject
+ *   /chat?q=...               → ask this immediately (from Home suggestions)
+ *   /chat?session=<id>        → reopen a saved session
  */
-
-import { useState, useEffect, useRef } from 'react';
-import { useAuth } from '@/providers/AuthProvider';
-import { useNavigate } from 'react-router-dom';
-import { ChatInterface, type Message } from '@/components/chat/ChatInterface';
-import { apiClient, type SessionMessage } from '@/lib/api';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { nanoid } from 'nanoid';
-import { ArrowLeft, MoreVertical } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-
-const SUBJECT_COLORS: Record<string, { bg: string; text: string }> = {
-  'Science': { bg: 'bg-emerald-500/10', text: 'text-emerald-600 dark:text-emerald-400' },
-  'Mathematics': { bg: 'bg-blue-500/10', text: 'text-blue-600 dark:text-blue-400' },
-  'Social Studies': { bg: 'bg-amber-500/10', text: 'text-amber-600 dark:text-amber-400' },
-  'English': { bg: 'bg-violet-500/10', text: 'text-violet-600 dark:text-violet-400' },
-};
+import { useAuth } from '@/providers/AuthProvider';
+import { useSessions } from '@/providers/SessionsProvider';
+import { apiClient, APIError, type SessionMessage } from '@/lib/api';
+import { ChatInterface, type Message } from '@/components/chat/ChatInterface';
+import { SUBJECT_LIST, getSubject, normalizeSubject } from '@/lib/constants';
+import { cn } from '@/lib/utils';
 
 export default function ChatPage() {
   const { user } = useAuth();
-  const navigate = useNavigate();
+  const { sessions, refresh } = useSessions();
   const userId = user?.user_id;
+  const [params, setParams] = useSearchParams();
+  const urlSession = params.get('session') || '';
+
   const [messages, setMessages] = useState<Message[]>([]);
+  const [sessionId, setSessionId] = useState('');
+  const [subject, setSubject] = useState<string | undefined>(() => normalizeSubject(params.get('subject')));
   const [loading, setLoading] = useState(false);
-  const hasLoadedRef = useRef(false);
-  const [sessionId, setSessionId] = useState<string>(() => {
-    const params = new URLSearchParams(window.location.search);
-    return params.get('session') || '';
-  });
-  const [subject] = useState<string>(() => {
-    const params = new URLSearchParams(window.location.search);
-    return params.get('subject') || '';
-  });
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState(false);
 
+  // Tracks the session currently shown, so adopting a newly-created id
+  // into the URL doesn't trigger a reload of the same conversation.
+  const shownSession = useRef('');
+  // Bumped on every reset; in-flight answers for an older view are dropped.
+  const viewGen = useRef(0);
+  const urlSubject = params.get('subject');
+
+  // React to the URL's session changing (sidebar click, back/forward, "New question").
   useEffect(() => {
-    if (!sessionId || !userId || hasLoadedRef.current) return;
-    hasLoadedRef.current = true;
-
-    const loadSessionHistory = async () => {
-      try {
-        const response = await apiClient.getSessionHistory(userId, sessionId);
-        const formatted: Message[] = response.messages.map((msg: SessionMessage) => ({
-          id: (msg.id as string) || nanoid(),
-          role: msg.role as 'user' | 'assistant',
-          content: msg.content as string,
-        }));
-        setMessages(formatted);
-      } catch {
-        setMessages([]);
-      }
-    };
-
-    loadSessionHistory();
-  }, [sessionId, userId]);
-
-  const handleSendMessage = async (userMessage: string) => {
-    if (!userId) return;
-
-    const userMsg: Message = {
-      id: nanoid(),
-      role: 'user',
-      content: userMessage,
-    };
-
-    setMessages((prev) => [...prev, userMsg]);
-    setLoading(true);
-
-    try {
-      const response = await apiClient.chat({
-        user_id: userId,
-        message: userMessage,
-        subject: subject || undefined,
-        session_id: sessionId || undefined,
-      });
-
-      if (response.session_id && !sessionId) {
-        setSessionId(response.session_id);
-        window.history.replaceState({}, '', `/chat?session=${response.session_id}`);
-      }
-
-      const assistantMsg: Message = {
-        id: nanoid(),
-        role: 'assistant',
-        content: response.response,
-        citations: response.citations?.map((c, idx) => ({
-          chunk_id: (idx + 1).toString(),
-          source: c,
-          score: 0,
-        })),
-      };
-
-      setMessages((prev) => [...prev, assistantMsg]);
-    } catch {
-      const errorMsg: Message = {
-        id: nanoid(),
-        role: 'assistant',
-        content: 'Sorry, I encountered an error. Please try again.',
-      };
-      setMessages((prev) => [...prev, errorMsg]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleNewChat = () => {
+    if (urlSession === shownSession.current) return;
+    shownSession.current = urlSession;
+    viewGen.current += 1;
+    /* eslint-disable react-hooks/set-state-in-effect -- syncing local state to the URL */
+    setSessionId(urlSession);
     setMessages([]);
-    setSessionId('');
-    hasLoadedRef.current = false;
-    window.history.replaceState({}, '', '/chat');
-  };
+    setLoading(false);
+    setHistoryError(false);
+    setHistoryLoading(false);
+    if (!urlSession) {
+      setSubject(normalizeSubject(urlSubject));
+      return;
+    }
+    if (!userId) return;
+    setHistoryLoading(true);
+    /* eslint-enable react-hooks/set-state-in-effect */
+    let cancelled = false;
+    let done = false;
+    apiClient
+      .getSessionHistory(userId, urlSession)
+      .then((res) => {
+        if (cancelled) return;
+        setMessages(
+          (res.messages ?? [])
+            .filter((m: SessionMessage) => m.role === 'user' || m.role === 'assistant')
+            .map((m: SessionMessage) => ({ id: m.id || nanoid(), role: m.role, content: m.content, sources: m.sources })),
+        );
+      })
+      .catch(() => !cancelled && setHistoryError(true))
+      .finally(() => {
+        done = true;
+        if (!cancelled) setHistoryLoading(false);
+      });
+    return () => {
+      cancelled = true;
+      // If the load was interrupted (StrictMode re-run, fast navigation),
+      // forget it so the next effect run fetches again.
+      if (!done) shownSession.current = '';
+    };
+  }, [urlSession, userId, urlSubject]);
 
-  const subjectColor = subject && SUBJECT_COLORS[subject] ? SUBJECT_COLORS[subject] : null;
+  // Subject of a reopened session comes from the session list.
+  const sessionSubject = sessions.find((s) => s.id === sessionId)?.subject;
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (sessionSubject) setSubject(normalizeSubject(sessionSubject));
+  }, [sessionSubject]);
+
+  const send = useCallback(
+    async (text: string) => {
+      if (!userId || loading) return;
+      const gen = viewGen.current;
+      setMessages((prev) => {
+        const kept = prev.filter((m) => !m.failed);
+        const last = kept[kept.length - 1];
+        // Retrying: the question is already shown, don't add it twice.
+        if (last?.role === 'user' && last.content === text) return kept;
+        return [...kept, { id: nanoid(), role: 'user', content: text }];
+      });
+      setLoading(true);
+      try {
+        const res = await apiClient.chat({
+          message: text,
+          subject,
+          session_id: sessionId || undefined,
+        });
+        if (gen !== viewGen.current) return; // student moved to another conversation
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: nanoid(),
+            role: 'assistant',
+            content: res.response,
+            sources: res.sources,
+            citations: res.citations,
+            grounded: res.grounded,
+          },
+        ]);
+        if (res.session_id && res.session_id !== sessionId) {
+          shownSession.current = res.session_id;
+          setSessionId(res.session_id);
+          setParams({ session: res.session_id }, { replace: true });
+          void refresh();
+        }
+      } catch (err) {
+        const reason =
+          err instanceof APIError && err.status >= 500
+            ? 'The server hit an error. It may still be starting up.'
+            : err instanceof TypeError
+              ? 'Can’t reach the server. Check your connection, or wait while it wakes up.'
+              : err instanceof Error
+                ? err.message
+                : 'Something went wrong.';
+        if (gen !== viewGen.current) return;
+        setMessages((prev) => [
+          ...prev,
+          { id: nanoid(), role: 'assistant', content: reason, failed: true, retryOf: text },
+        ]);
+      } finally {
+        if (gen === viewGen.current) setLoading(false);
+      }
+    },
+    [userId, loading, subject, sessionId, setParams, refresh],
+  );
+
+  // ?q= from the Home page: ask once, then clean the URL.
+  const askedQ = useRef(false);
+  const q = params.get('q');
+  useEffect(() => {
+    if (!q || askedQ.current || !userId) return;
+    askedQ.current = true;
+    const next = new URLSearchParams(params);
+    next.delete('q');
+    setParams(next, { replace: true });
+    void send(q);
+  }, [q, userId, params, setParams, send]);
+
+  const current = getSubject(subject);
+
+  const emptyState = (
+    <div className="mx-auto max-w-2xl pt-[8vh]">
+      <h1 className="font-serif text-3xl font-semibold tracking-tight sm:text-[2.5rem] sm:leading-[1.15]">
+        {current ? `What are you studying in ${current.label}?` : 'What are you studying today?'}
+      </h1>
+      <p className="mt-3 max-w-prose text-muted-foreground">
+        {current
+          ? `Answers will come from your Class 9 ${current.books} textbook${current.books.includes(',') ? 's' : ''}, with the chapter and page.`
+          : 'Ask anything from your Class 9 NCERT books. Pick a subject below to search only that book.'}
+      </p>
+
+      {!current && (
+        <div className="mt-6 flex flex-wrap gap-2">
+          {SUBJECT_LIST.map((s) => (
+            <button
+              key={s.id}
+              onClick={() => setSubject(s.id)}
+              className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3.5 py-1.5 text-sm hover:border-primary/40"
+            >
+              <s.icon className={cn('h-4 w-4', s.ink)} />
+              {s.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {current && (
+        <ul className="mt-8 divide-y divide-border border-y border-border">
+          {current.prompts.map((p) => (
+            <li key={p}>
+              <button
+                onClick={() => send(p)}
+                className="group flex w-full items-center gap-3 py-3.5 text-left font-serif text-[1.05rem] text-foreground/90 hover:text-foreground"
+              >
+                <current.icon className={cn('h-4 w-4 shrink-0', current.ink)} aria-hidden />
+                <span className="group-hover:marker">{p}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 
   return (
-    <div className="flex flex-col h-full bg-background">
-      {/* Chat Header */}
-      <div className="border-b border-border bg-background/50 backdrop-blur supports-[backdrop-filter]:bg-background/40">
-        <div className="max-w-3xl mx-auto flex items-center justify-between px-4 py-4">
-          <div className="flex items-center gap-3">
+    <div className="flex min-h-0 flex-1 flex-col">
+      {historyError ? (
+        <div className="flex flex-1 items-center justify-center p-6 text-center">
+          <div className="max-w-sm">
+            <p className="font-serif text-xl font-semibold">This conversation couldn’t be loaded</p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              The server didn’t return its history. It may be waking up. Try again in a minute, or start a new question.
+            </p>
             <button
-              onClick={() => navigate('/')}
-              className="inline-flex items-center justify-center h-9 w-9 rounded-lg border border-border hover:bg-muted transition-colors"
-              title="Back to dashboard"
+              onClick={() => setParams({}, { replace: false })}
+              className="mt-4 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
             >
-              <ArrowLeft className="h-4 w-4" />
+              Start a new question
             </button>
-            <div>
-              <h1 className="font-semibold text-foreground">Chat</h1>
-              {subject && subjectColor && (
-                <p className={`text-xs font-medium ${subjectColor.text}`}>
-                  {subject}
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {messages.length > 0 && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleNewChat}
-                className="text-xs"
-              >
-                New chat
-              </Button>
-            )}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-9 w-9"
-            >
-              <MoreVertical className="h-4 w-4" />
-            </Button>
           </div>
         </div>
-      </div>
-
-      {/* Chat Content */}
-      <ChatInterface
-        messages={messages}
-        onSendMessage={handleSendMessage}
-        loading={loading}
-        disabled={loading}
-      />
+      ) : (
+        <ChatInterface
+          messages={messages}
+          onSendMessage={send}
+          loading={loading}
+          historyLoading={historyLoading}
+          subject={subject}
+          onSubjectChange={setSubject}
+          subjectLocked={messages.length > 0 || !!sessionId}
+          emptyState={emptyState}
+        />
+      )}
     </div>
   );
 }

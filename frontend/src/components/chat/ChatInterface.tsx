@@ -1,121 +1,123 @@
 /**
- * ChatInterface — Full chat interface with message list and input
- * Input stays floating at bottom with padding, messages scroll above
+ * ChatInterface — scrolling transcript with the composer pinned in flow
+ * at the bottom (no fixed positioning, so it never overlaps the sidebar).
  */
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { ArrowDown } from 'lucide-react';
+import { Answer, QuestionNote, Thinking, type Message } from './MessageBubble';
+import { ChatInput } from './ChatInput';
+import { getSubject } from '@/lib/constants';
 
-import { useEffect, useRef } from "react";
-import { MessageBubble } from "./MessageBubble";
-import { ChatInput } from "./ChatInput";
-import { ArrowDown, Sparkles } from "lucide-react";
-
-export interface Message {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  citations?: Array<{
-    chunk_id: string;
-    source: string;
-    score: number;
-  }>;
-}
+export type { Message };
 
 interface ChatInterfaceProps {
   messages: Message[];
   onSendMessage: (message: string) => void;
   loading?: boolean;
-  disabled?: boolean;
+  historyLoading?: boolean;
+  subject?: string;
+  onSubjectChange?: (subject: string | undefined) => void;
+  subjectLocked?: boolean;
+  emptyState?: React.ReactNode;
 }
 
 export function ChatInterface({
   messages,
   onSendMessage,
   loading,
-  disabled,
+  historyLoading,
+  subject,
+  onSubjectChange,
+  subjectLocked,
+  emptyState,
 }: ChatInterfaceProps) {
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const pinnedRef = useRef(true);
+  const [showJump, setShowJump] = useState(false);
+  const subjectLabel = getSubject(subject)?.label;
 
-  // Auto-scroll to bottom on new messages, but only if user was at bottom
-  useEffect(() => {
-    if (messages.length === 0 || !containerRef.current) return;
-    const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
-    const isAtBottom = scrollHeight - scrollTop - clientHeight < 100;
-    if (isAtBottom) {
-      bottomRef.current?.scrollIntoView({ behavior: "auto" });
-    }
-  }, [messages]);
-
-  // Check scroll position to toggle button visibility
-  const scrollToBottom = () => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  const onScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+    pinnedRef.current = distance < 120;
+    setShowJump(distance > 400);
   };
 
+  // Follow new content only if the student hasn't scrolled up to re-read.
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (el && pinnedRef.current) el.scrollTop = el.scrollHeight;
+  }, [messages, loading]);
+
+  // When the student sends a message, always bring it into view.
+  const lastRole = messages[messages.length - 1]?.role;
+  useEffect(() => {
+    if (lastRole === 'user') {
+      pinnedRef.current = true;
+      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+    }
+  }, [lastRole, messages.length]);
+
+  const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant' && !m.failed);
+
   return (
-    <div className="flex flex-col h-full relative">
-      {/* Messages scrollable area - takes remaining space */}
-      <div
-        ref={containerRef}
-        className="flex-1 overflow-y-auto pb-32"
-      >
-        <div className="max-w-2xl mx-auto flex flex-col gap-6 px-4 pt-6">
-          {messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center min-h-[70vh] text-center">
-              <div className="h-14 w-14 rounded-full bg-gradient-to-br from-violet-500 to-amber-500 mx-auto flex items-center justify-center mb-5">
-                <Sparkles className="h-7 w-7 text-white" />
-              </div>
-              <p className="text-2xl font-bold text-foreground mb-2">
-                What do you want to learn today?
-              </p>
-              <p className="text-sm text-muted-foreground mb-6">
-                Ask any question about Science, Math, Social Studies, or any CBSE topic
-              </p>
-              <div className="flex flex-wrap justify-center gap-2">
-                {[
-                  "Explain photosynthesis",
-                  "What are polynomials?",
-                  "Quiz me on Chapter 1",
-                  "How does electricity work?",
-                ].map((suggestion) => (
-                  <button
-                    key={suggestion}
-                    onClick={() => onSendMessage(suggestion)}
-                    className="text-xs px-4 py-2 rounded-full border border-border bg-card hover:bg-muted/60 hover:border-primary/30 text-muted-foreground hover:text-foreground transition-all duration-150"
-                  >
-                    {suggestion}
-                  </button>
-                ))}
-              </div>
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-3xl px-4 pb-8 pt-6 sm:px-6 xl:max-w-[60rem]">
+          {historyLoading ? (
+            <div className="space-y-4 pt-4" aria-busy="true">
+              <div className="ml-auto h-10 w-2/3 animate-pulse rounded-2xl bg-muted" />
+              <div className="h-4 w-full animate-pulse rounded bg-muted" />
+              <div className="h-4 w-11/12 animate-pulse rounded bg-muted" />
+              <div className="h-4 w-4/5 animate-pulse rounded bg-muted" />
             </div>
+          ) : messages.length === 0 ? (
+            emptyState
           ) : (
-            <>
-              {messages.map((msg) => (
-                <MessageBubble
-                  key={msg.id}
-                  role={msg.role}
-                  content={msg.content}
-                  citations={msg.citations}
-                />
-              ))}
-              <div ref={bottomRef} className="h-4" />
-            </>
+            <div className="flex flex-col gap-7">
+              {messages.map((m) =>
+                m.role === 'user' ? (
+                  <QuestionNote key={m.id} content={m.content} />
+                ) : (
+                  <Answer
+                    key={m.id}
+                    message={m}
+                    isLatest={!loading && m.id === lastAssistant?.id}
+                    onFollowUp={onSendMessage}
+                    onRetry={onSendMessage}
+                  />
+                ),
+              )}
+              {loading && <Thinking subject={subjectLabel} />}
+            </div>
           )}
         </div>
       </div>
 
-      {/* Scroll to bottom button - fixed right side, above input */}
-      <button
-        onClick={scrollToBottom}
-        className={`fixed right-6 bottom-24 bg-primary text-primary-foreground rounded-full p-2.5 shadow-lg hover:opacity-90 transition-all duration-200 z-50 ${
-          messages.length > 2 ? 'opacity-100' : 'opacity-0 pointer-events-none'
-        }`}
-        title="Scroll to bottom"
-      >
-        <ArrowDown className="h-4 w-4" />
-      </button>
+      {showJump && (
+        <button
+          onClick={() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })}
+          className="absolute bottom-32 left-1/2 z-10 -translate-x-1/2 rounded-full border border-border bg-card p-2 text-muted-foreground shadow-md hover:text-foreground"
+          aria-label="Jump to latest"
+        >
+          <ArrowDown className="h-4 w-4" />
+        </button>
+      )}
 
-      {/* Floating input at bottom */}
-      <div className="fixed bottom-4 left-0 right-0 px-4">
-        <ChatInput onSend={onSendMessage} loading={loading} disabled={disabled} />
+      <div className="shrink-0 bg-gradient-to-t from-background via-background to-background/0 px-4 pb-4 pt-2 sm:px-6">
+        <div className="mx-auto w-full max-w-3xl">
+          <ChatInput
+            onSend={onSendMessage}
+            loading={loading}
+            subject={subject}
+            onSubjectChange={onSubjectChange}
+            subjectLocked={subjectLocked}
+          />
+          <p className="mt-2 text-center text-[0.7rem] text-muted-foreground">
+            Answers come from NCERT Class 9 textbooks. Check important facts in your book.
+          </p>
+        </div>
       </div>
     </div>
   );

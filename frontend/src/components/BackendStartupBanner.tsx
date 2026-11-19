@@ -1,23 +1,23 @@
-import { Loader2, Zap } from "lucide-react";
-import { useBackendHealth } from "@/hooks/useBackendHealth";
+import { useBackendHealth } from '@/hooks/useBackendHealth';
 
+/**
+ * The free Render instance sleeps when idle. Tell the student what's
+ * happening instead of letting requests fail silently.
+ */
 export function BackendStartupBanner() {
   const { isHealthy, isChecking } = useBackendHealth();
-
   if (isHealthy || isChecking) return null;
 
   return (
-    <div className="sticky top-0 z-40 bg-amber-50 dark:bg-amber-950/50 border-b border-amber-200 dark:border-amber-800">
-      <div className="max-w-7xl mx-auto px-4 py-2 flex items-center justify-center gap-2">
-        <Zap className="h-4 w-4 text-amber-500 animate-pulse" />
-        <p className="text-sm text-amber-700 dark:text-amber-300 font-medium">
-          Server waking up...
-        </p>
-        <span className="text-xs text-amber-600 dark:text-amber-400">
-          (Takes about 5 mins!)
-        </span>
-        <Loader2 className="h-3.5 w-3.5 text-amber-500 animate-spin" />
-      </div>
+    <div
+      role="status"
+      className="flex shrink-0 items-center justify-center gap-2 bg-highlight px-4 py-1.5 text-center text-xs font-medium text-highlight-foreground"
+    >
+      <span className="h-3 w-3 shrink-0 animate-spin rounded-full border-[1.5px] border-current border-r-transparent" />
+      <span className="sm:hidden">Server waking up, this can take a few minutes</span>
+      <span className="hidden sm:inline">
+        The tutor’s server is waking up. On the free plan this can take a few minutes; questions will work once it’s ready.
+      </span>
     </div>
   );
 }

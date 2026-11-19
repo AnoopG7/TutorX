@@ -7,7 +7,7 @@ import { apiClient, type ProfileResponse } from '@/lib/api';
 
 export function useProfile(userId: string) {
   const [profile, setProfile] = useState<ProfileResponse | null>(null);
-  const [loading, setLoading] = useState(!userId);
+  const [loading, setLoading] = useState(!!userId);
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
