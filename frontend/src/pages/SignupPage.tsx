@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { MailCheck } from 'lucide-react';
 import { useAuth } from '@/providers/AuthProvider';
 import { APIError } from '@/lib/api';
@@ -9,7 +9,7 @@ type Errors = Partial<Record<'name' | 'email' | 'password' | 'confirm', string>>
 
 export default function SignupPage() {
   const navigate = useNavigate();
-  const { signup } = useAuth();
+  const { signup, isAuthenticated } = useAuth();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -39,7 +39,7 @@ export default function SignupPage() {
     setLoading(true);
     try {
       const result = await signup(email.trim(), password, name.trim());
-      if (result.status === 'logged_in') navigate('/settings?welcome=1');
+      if (result.status === 'logged_in') navigate('/', { replace: true });
       else setEmailSent(true);
     } catch (err) {
       if (err instanceof APIError) {
@@ -71,6 +71,8 @@ export default function SignupPage() {
       </AuthLayout>
     );
   }
+
+  if (isAuthenticated) return <Navigate to="/" replace />;
 
   return (
     <AuthLayout

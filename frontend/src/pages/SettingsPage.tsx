@@ -2,7 +2,6 @@
  * Settings — how TutorX teaches you, plus appearance.
  */
 import { useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Check, Monitor, Moon, Sun } from 'lucide-react';
@@ -29,8 +28,6 @@ export default function SettingsPage() {
   const { user } = useAuth();
   const { profile, loading, error: loadError, updateProfile } = useProfile(user?.user_id || '');
   const { theme, toggleTheme } = useThemeContext();
-  const [params] = useSearchParams();
-  const welcome = params.get('welcome') === '1';
   const [status, setStatus] = useState<{ type: 'saved' | 'error'; message: string } | null>(null);
 
   const {
@@ -75,18 +72,6 @@ export default function SettingsPage() {
         <h1 className="font-serif text-[2rem] font-semibold tracking-tight">Settings</h1>
         <p className="mt-1 text-muted-foreground">Tell TutorX how you like to learn. It uses this in every answer.</p>
 
-        {welcome && (
-          <div className="mt-6 rounded-lg border border-highlight/60 bg-highlight/15 p-4 text-sm">
-            <p className="font-medium">Welcome to TutorX, {user?.name?.split(' ')[0]}.</p>
-            <p className="mt-0.5 text-muted-foreground">
-              Take a minute to choose your subjects and teaching style, or{' '}
-              <Link to="/chat" className="font-medium text-link underline underline-offset-4">
-                skip and ask a question
-              </Link>
-              .
-            </p>
-          </div>
-        )}
 
         {loadError && !loading && (
           <p role="alert" className="mt-6 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">

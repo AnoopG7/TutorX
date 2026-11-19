@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/providers/AuthProvider';
 import { APIError } from '@/lib/api';
 import { AuthLayout, Field, FormAlert, SubmitButton } from '@/components/auth/AuthLayout';
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, isAuthenticated } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
@@ -59,6 +59,8 @@ export default function LoginPage() {
       setLoading(false);
     }
   };
+
+  if (isAuthenticated) return <Navigate to="/" replace />;
 
   return (
     <AuthLayout
