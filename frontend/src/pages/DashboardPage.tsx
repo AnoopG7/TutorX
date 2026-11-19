@@ -67,7 +67,7 @@ export default function DashboardPage() {
             <h2 id="books" className="font-serif text-lg font-semibold">
               Your books
             </h2>
-            <span className="text-xs text-muted-foreground">NCERT Class 9</span>
+            <span className="text-xs text-muted-foreground">NCERT</span>
           </div>
           <ul className="mt-3 grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-2">
             {orderedSubjects.map((s) => (

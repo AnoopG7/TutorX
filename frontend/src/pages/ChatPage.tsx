@@ -166,8 +166,8 @@ export default function ChatPage() {
       </h1>
       <p className="mt-3 max-w-prose text-muted-foreground">
         {current
-          ? `Answers will come from your Class 9 ${current.books} textbook${current.books.includes(',') ? 's' : ''}, with the chapter and page.`
-          : 'Ask anything from your Class 9 NCERT books. Pick a subject below to search only that book.'}
+          ? `Answers will come from your NCERT ${current.books} textbook${current.books.includes(',') ? 's' : ''}, with the chapter and page.`
+          : 'Ask anything from your NCERT books. Pick a subject below to search only that book.'}
       </p>
 
       {!current && (

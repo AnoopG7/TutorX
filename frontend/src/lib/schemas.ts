@@ -9,7 +9,7 @@ export const profileSchema = z.object({
   name: z.string()
     .min(2, 'Name must be at least 2 characters')
     .max(50, 'Name must be less than 50 characters'),
-  grade: z.number().min(9, 'Choose Class 9 or 10').max(10, 'Choose Class 9 or 10'),
+  grade: z.number().int().min(9).max(10),
   subjects: z.array(z.string()).min(1, 'Select at least one subject'),
   teaching_style: z.enum([
     'definition_first',

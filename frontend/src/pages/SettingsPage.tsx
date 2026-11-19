@@ -10,7 +10,7 @@ import { useAuth } from '@/providers/AuthProvider';
 import { useProfile } from '@/hooks/useProfile';
 import { useThemeContext } from '@/providers/ThemeProvider';
 import { profileSchema, type ProfileFormData } from '@/lib/schemas';
-import { GRADES, SUBJECT_LIST, TEACHING_STYLES, normalizeSubject, type TeachingStyle } from '@/lib/constants';
+import { SUBJECT_LIST, TEACHING_STYLES, normalizeSubject, type TeachingStyle } from '@/lib/constants';
 import { cn } from '@/lib/utils';
 
 function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
@@ -103,7 +103,7 @@ export default function SettingsPage() {
         ) : (
           <form onSubmit={handleSubmit(onSubmit)} className="mt-8">
             <Section title="About you">
-              <div className="grid gap-5 sm:grid-cols-[1fr_10rem]">
+              <div className="max-w-md">
                 <div>
                   <label htmlFor="name" className="mb-1.5 block text-sm font-medium">Name</label>
                   <input
@@ -116,18 +116,6 @@ export default function SettingsPage() {
                     )}
                   />
                   {errors.name && <p className="mt-1.5 text-xs text-destructive">{errors.name.message}</p>}
-                </div>
-                <div>
-                  <label htmlFor="grade" className="mb-1.5 block text-sm font-medium">Class</label>
-                  <select
-                    id="grade"
-                    {...register('grade', { valueAsNumber: true })}
-                    className="h-11 w-full rounded-md border border-input bg-card px-3 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  >
-                    {GRADES.map((g) => (
-                      <option key={g} value={g}>Class {g}</option>
-                    ))}
-                  </select>
                 </div>
               </div>
             </Section>

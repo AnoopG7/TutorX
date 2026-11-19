@@ -115,7 +115,7 @@ export function ChatInterface({
             subjectLocked={subjectLocked}
           />
           <p className="mt-2 text-center text-[0.7rem] text-muted-foreground">
-            Answers come from NCERT Class 9 textbooks. Check important facts in your book.
+            Answers come from your NCERT textbooks. Check important facts in your book.
           </p>
         </div>
       </div>

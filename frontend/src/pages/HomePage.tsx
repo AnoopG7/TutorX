@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils';
 const PIPELINE = [
   {
     title: 'Your question is matched against the book',
-    body: 'Every page of the NCERT Class 9 books is split into passages and indexed. Your question is compared with all of them to find the closest ones.',
+    body: 'Every page of the NCERT books is split into passages and indexed. Your question is compared with all of them to find the closest ones.',
   },
   {
     title: 'Weak matches get a second search',
@@ -68,7 +68,7 @@ export default function HomePage() {
             A tutor that answers from your NCERT textbook.
           </h1>
           <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground">
-            Ask any doubt from Class 9 Science, Maths, Social Science, English or Hindi. TutorX finds the passage in
+            Ask any CBSE doubt from Science, Maths, Social Science, English or Hindi. TutorX finds the passage in
             your book, explains it the way you learn best, and shows you the chapter and page it came from.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
@@ -110,7 +110,7 @@ export default function HomePage() {
       <section className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
         <div className="grid gap-10 lg:grid-cols-[1fr_2fr]">
           <div>
-            <h2 className="font-serif text-3xl font-semibold tracking-tight">Every Class 9 book</h2>
+            <h2 className="font-serif text-3xl font-semibold tracking-tight">Your NCERT books</h2>
             <p className="mt-3 text-muted-foreground">
               Ask across all of them, or choose one subject so answers only come from that book.
             </p>

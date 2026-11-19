@@ -87,7 +87,7 @@ export function Answer({ message, isLatest, onFollowUp, onRetry }: AnswerProps) 
   return (
     <div className="grid gap-x-10 xl:grid-cols-[minmax(0,1fr)_13.5rem]">
       <div className="min-w-0">
-        {message.grounded === false && (
+        {message.grounded === false && sources.length === 0 && (
           <p className="mb-3 flex items-start gap-2 rounded-md border border-border bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
             <BookX className="mt-px h-3.5 w-3.5 shrink-0" />
             This wasn’t found in your textbook, so the answer is from general knowledge. Check it against your book.
