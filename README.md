@@ -100,13 +100,13 @@ User Message
   │
   ▼
 ┌─────────────────────────┐
-│ 1. Embed Query          │ ← Ollama nomic-embed-text (768-dim)
+│ 1. Embed Query          │ ← nomic-embed-text, 768-dim (Ollama or Nomic API)
 │ 2. Vector Search        │ ← pgvector RPC with fallback chain
 │ 3. Query Reformulation  │ ← Groq LLM (conditional: if retrieval weak)
 │ 4. Chunk Enrichment     │ ← Groq LLM (conditional: if match found)
 │ 5. Build Context        │ ← Profile + history + enriched chunks
 │ 6. Generate Response    │ ← Groq LLM (1 call, always)
-│ 7. Cache Result         │ ← SHA256 hash → qa_cache table
+│ 7. Save + Cite          │ ← answer and structured sources saved to the session
 └─────────────────────────┘
 ```
 
@@ -134,10 +134,10 @@ This architecture **eliminates timeouts and rate limits** entirely. The original
 | Feature | Details |
 |---------|---------|
 | **80 NCERT PDFs Ingested** | Science (13), Math (15), Economics (4), English (18), Geography (6), Hindi (14), History (5), Political Science (5) |
-| **702 Textbook Chunks** | 450-token overlapping chunks with 50-token overlap for context continuity |
+| **1,389 Textbook Chunks** | 450-token overlapping chunks with 50-token overlap for context continuity |
 | **Chapter/Section Detection** | Regex-based heading extraction from NCERT PDF structure |
 | **Verification System** | All chunks inserted as `is_verified=FALSE` for manual review before production |
-| **QA Cache** | SHA256-hashed query caching to avoid redundant LLM calls for repeated questions |
+| **Grounding Flag** | Every answer reports whether textbook passages were found, and the UI says so when they weren't |
 
 ### Student Profile & Progress
 
@@ -345,13 +345,19 @@ npm run dev
 | `GET` | `/api/chat/sessions/{user_id}/{session_id}/history` | Session message history |
 | `POST` | `/api/chat/sessions/{session_id}/close` | Close a session |
 | `POST` | `/api/auth/signup` | Create account |
-| `POST` | `/api/auth/login` | Login |
+| `POST` | `/api/auth/login` | Login (access + refresh token) |
+| `POST` | `/api/auth/refresh` | Exchange a refresh token for a new access token |
+| `POST` | `/api/auth/forgot-password` | Email a password-reset link |
+| `POST` | `/api/auth/reset-password` | Set a new password from the reset link |
 | `GET` | `/api/profile/{user_id}` | Get student profile |
 | `PUT` | `/api/profile/{user_id}` | Update profile |
 | `GET` | `/api/student/weak-areas` | Get weak areas + mastered topics |
 | `GET` | `/api/student/progress` | Get progress by subject |
 | `GET` | `/api/chapters/{subject}/{grade}` | List available chapters |
-| `GET` | `/health` | Health check |
+| `GET` | `/health` | Liveness check (cheap, polled by the frontend) |
+| `GET` | `/health/ready` | Readiness: database, embeddings and LLM key. Returns 503 if answers can't be grounded |
+
+All user routes require `Authorization: Bearer <access token>` and only return the caller's own data (403/404 otherwise). Run the offline API tests with `cd backend && python -m pytest -q`.
 
 ---
 
@@ -360,7 +366,7 @@ npm run dev
 | Service | Tier | Cost |
 |---------|------|------|
 | Groq (LLM) | Free | $0/month |
-| Ollama (Embeddings) | Local | $0/month |
+| Embeddings | Ollama locally, Nomic API free tier in production | $0/month |
 | Supabase (Database) | Free (500MB) | $0/month |
 | Vercel (Frontend) | Free | $0/month |
 | Render (Backend) | Free (750 hrs) | $0/month |
@@ -373,7 +379,17 @@ npm run dev
 - **Frontend**: `cd frontend && npm run build` → deploy to Vercel
 - **Backend**: Push to GitHub → Render auto-deploys via `Procfile`
 - **Database**: Supabase SQL Editor for schema + RPC functions
-- **Embeddings**: Requires Ollama running on the same machine as the backend
+- **Embeddings**: Render has no Ollama, so set `EMBEDDING_PROVIDER=nomic` and `NOMIC_API_KEY`, or point `OLLAMA_BASE_URL` at a hosted Ollama. Check `GET /health/ready` after deploying.
+
+Backend environment (Render):
+
+| Variable | Purpose |
+|----------|---------|
+| `SUPABASE_URL`, `SUPABASE_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | Database and auth |
+| `GROQ_API_KEY` | LLM |
+| `CORS_ORIGINS` | Comma-separated frontend origins, e.g. `https://anoop-tutorx.vercel.app` |
+| `FRONTEND_URL` | Used in password-reset emails; also add `{FRONTEND_URL}/reset-password` to Supabase → Auth → Redirect URLs |
+| `EMBEDDING_PROVIDER`, `NOMIC_API_KEY`, `OLLAMA_BASE_URL` | Query embeddings (see above) |
 
 ---
 
