@@ -8,9 +8,12 @@ overall and per subject. Read-only: it only runs searches.
     cd backend && source .venv/bin/activate     # same embedding provider as production
     python -m scripts.eval_retrieval
     python -m scripts.eval_retrieval --no-filter   # search all subjects at once
+    python -m scripts.eval_retrieval --exact       # exact cosine search in Python (ignores the DB index)
 """
 import argparse
 import asyncio
+import json
+import math
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -18,7 +21,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.rag import retriever  # noqa: E402
-from app.services.supabase_service import init_supabase  # noqa: E402
+from app.rag.embedder import embed_text  # noqa: E402
+from app.services.supabase_service import get_supabase_client, init_supabase  # noqa: E402
 
 # (subject, question, substring of the expected chapter label)
 CASES = [
@@ -83,13 +87,42 @@ CASES = [
 ]
 
 
-async def run(filter_subject: bool) -> None:
+def _unit(v):
+    v = json.loads(v) if isinstance(v, str) else v
+    n = math.sqrt(sum(x * x for x in v)) or 1.0
+    return [x / n for x in v]
+
+
+def _load_all():
+    db, rows, start = get_supabase_client(), [], 0
+    while True:
+        batch = db.table("textbook_chunks").select("subject, chapter, embedding").range(start, start + 999).execute().data
+        rows += [{"subject": r["subject"], "chapter": r["chapter"], "v": _unit(r["embedding"])} for r in batch]
+        if len(batch) < 1000:
+            return rows
+        start += 1000
+
+
+async def _exact_top5(rows, question, subject):
+    q = _unit(await embed_text(question))
+    scored = sorted(
+        ((sum(a * b for a, b in zip(q, r["v"])), r["chapter"]) for r in rows if subject is None or r["subject"] == subject),
+        reverse=True,
+    )
+    return [ch for _, ch in scored[:5]]
+
+
+async def run(filter_subject: bool, exact: bool) -> None:
     init_supabase()
+    rows = _load_all() if exact else None
     hits1, hits5, per = 0, 0, defaultdict(lambda: [0, 0, 0])
     misses = []
     for subject, question, expected in CASES:
-        chunks = await retriever._retrieve_chunks_internal(question, subject if filter_subject else None, None, 5)
-        chapters = [c.chapter for c in chunks]
+        subj = subject if filter_subject else None
+        if exact:
+            chapters = await _exact_top5(rows, question, subj)
+        else:
+            chapters = [c.chapter for c in await retriever._retrieve_chunks_internal(question, subj, None, 5)]
         h1 = bool(chapters) and expected in chapters[0]
         h5 = any(expected in ch for ch in chapters)
         hits1 += h1
@@ -114,5 +147,7 @@ async def run(filter_subject: bool) -> None:
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--no-filter", action="store_true", help="don't filter by subject")
+    ap.add_argument("--exact", action="store_true", help="exact cosine search in Python instead of the DB index")
     args = ap.parse_args()
-    asyncio.run(run(filter_subject=not args.no_filter))
+    print("mode:", "exact search" if args.exact else "database index (RPC)", "| subject filter:", not args.no_filter)
+    asyncio.run(run(filter_subject=not args.no_filter, exact=args.exact))

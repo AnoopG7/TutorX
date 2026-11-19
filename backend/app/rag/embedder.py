@@ -23,6 +23,13 @@ EMBED_DIM = 768
 NOMIC_URL = "https://api-atlas.nomic.ai/v1/embedding/text"
 
 
+# nomic-embed-text is trained with task prefixes. Nomic's API adds them from
+# task_type; for Ollama we add them ourselves so both providers produce the
+# same vectors for the same text.
+QUERY_PREFIX = "search_query: "
+DOCUMENT_PREFIX = "search_document: "
+
+
 class EmbeddingUnavailable(RuntimeError):
     """The configured embedding service couldn't be reached or misbehaved."""
 
@@ -66,7 +73,7 @@ async def embed_text(text: str) -> list[float]:
     if provider == "nomic":
         return (await _nomic([text], "search_query"))[0]
     try:
-        return _check([_ollama().get_text_embedding(text)])[0]
+        return _check([_ollama().get_text_embedding(QUERY_PREFIX + text)])[0]
     except EmbeddingUnavailable:
         raise
     except Exception as e:
@@ -78,4 +85,4 @@ async def embed_batch(texts: list[str]) -> list[list[float]]:
     provider = get_settings().embedding_provider.lower()
     if provider == "nomic":
         return await _nomic(texts, "search_document")
-    return _check(_ollama().get_text_embedding_batch(texts))
+    return _check(_ollama().get_text_embedding_batch([DOCUMENT_PREFIX + t for t in texts]))

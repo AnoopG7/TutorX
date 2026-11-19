@@ -137,7 +137,7 @@ The original ReAct agent design needed 14+ Groq calls per question and frequentl
 | **1,581 Textbook Chunks** | ~300-word chunks with 50-word overlap, each tagged with chapter, section and printed page number |
 | **Chapter/Section/Page Metadata** | Chapter titles rebuilt from NCERT's shadow-font headings, numbered section headings, and printed book page numbers (inferred from neighbouring chapters when a file has none) |
 | **Hindi Support** | NCERT's Hindi PDFs use the legacy Kruti Dev font; text is converted to Unicode Devanagari before embedding |
-| **Retrieval Evaluation** | `scripts/eval_retrieval.py`: 58 questions with known chapters. Exact search: **hit@1 78%, hit@5 91%** |
+| **Retrieval Evaluation** | `scripts/eval_retrieval.py`: 58 questions with known chapters. **hit@1 78%, hit@5 93%** (exact search; Science 100%, Maths 92%) |
 | **Grounding Flag** | Every answer reports whether textbook passages were found, and the UI says so when they weren't |
 
 ### Student Profile & Progress
@@ -319,7 +319,8 @@ cp .env.example .env
 # Ingest PDFs
 python -m scripts.reingest --dry-run    # Preview chapters/pages for every PDF
 python -m scripts.reingest              # Embed all PDFs and replace textbook_chunks
-python -m scripts.eval_retrieval        # Measure retrieval accuracy (hit@1 / hit@5)
+python -m scripts.eval_retrieval        # Retrieval accuracy through the DB index (hit@1 / hit@5)
+python -m scripts.eval_retrieval --exact  # Same, with exact search (isolates index recall)
 
 # Start backend
 python -m app.main
