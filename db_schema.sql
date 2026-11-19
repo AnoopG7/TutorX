@@ -54,10 +54,11 @@ CREATE INDEX idx_tc_subject_grade ON textbook_chunks(subject, grade);
 CREATE INDEX idx_tc_chapter       ON textbook_chunks(chapter);
 CREATE INDEX idx_tc_verified      ON textbook_chunks(is_verified);
 
--- IVFFlat index for fast cosine similarity search
-CREATE INDEX textbook_chunks_embedding_idx
-ON textbook_chunks USING ivfflat (embedding vector_cosine_ops)
-WITH (lists = 100);
+-- HNSW index for cosine similarity search. (IVFFlat with lists = 100 searched
+-- ~1% of this small table per query; see backend/app/rag/migrations/001_hnsw_index.sql.)
+CREATE INDEX textbook_chunks_embedding_hnsw
+ON textbook_chunks USING hnsw (embedding vector_cosine_ops)
+WITH (m = 16, ef_construction = 64);
 
 -- ============================================================================
 -- 3. QA CACHE (Frequently asked questions — built automatically)

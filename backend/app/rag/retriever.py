@@ -16,11 +16,15 @@ import logging
 import time
 import json
 import math
+import os
 
 logger = logging.getLogger(__name__)
 
 TOP_K          = 5
-MIN_SIMILARITY = 0.65
+# Cosine-similarity floor for a passage to count as relevant. nomic-embed-text
+# scores on-topic NCERT passages around 0.55-0.75, so 0.65 dropped most of them.
+# Override with RAG_MIN_SIMILARITY.
+MIN_SIMILARITY = float(os.getenv("RAG_MIN_SIMILARITY", "0.55"))
 
 # Feature flags
 USE_QUERY_REFORMULATION = True   # Strategy 2: LLM-based query reformulation
