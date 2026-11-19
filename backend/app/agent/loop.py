@@ -220,16 +220,20 @@ async def run_agent(
 
     # ── 2. RETRIEVE RELEVANT NCERT CHUNKS ────────────────────────────────────
     citations: list[str] = []
+    sources: list[dict] = []
     context = ""
     try:
-        from app.rag.retriever import retrieve_chunks, format_context
+        from app.rag.retriever import retrieve_chunks, format_context, chunks_to_sources
 
         chunks = await retrieve_chunks(message, subject=subject)
-        context = format_context(chunks)
-        citations = [c.citation_label() for c in chunks]
+        if chunks:
+            context = format_context(chunks)
+            citations = [c.citation_label() for c in chunks]
+            sources = chunks_to_sources(chunks)
     except Exception as e:
-        logger.warning("RAG retrieval failed (Ollama down?): %s", e)
-        # Continue without context — LLM will use curriculum knowledge
+        # Most often: the embedding service is unreachable (EMBEDDING_PROVIDER).
+        # The answer still goes out, but it is marked grounded=False.
+        logger.error("RAG retrieval failed, answering without textbook context: %s", e)
 
     # ── 3. LOG USER MESSAGE ──────────────────────────────────────────────────
     if retrieved_session_id:
@@ -256,7 +260,7 @@ async def run_agent(
     if retrieved_session_id:
         try:
             await append_message(
-                retrieved_session_id, role="assistant", content=response_text
+                retrieved_session_id, role="assistant", content=response_text, sources=sources
             )
         except Exception:
             pass
@@ -272,5 +276,7 @@ async def run_agent(
         "response": response_text,
         "session_id": retrieved_session_id,
         "citations": citations,
+        "sources": sources,
         "tools_used": ["rag_search"] if citations else [],
+        "grounded": bool(sources),
     }

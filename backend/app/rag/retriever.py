@@ -47,6 +47,34 @@ class RetrievedChunk:
         return base
 
 
+def chunks_to_sources(chunks: list[RetrievedChunk]) -> list[dict]:
+    """
+    Structured citations for the client: one entry per chapter+section,
+    with every page that contributed and the best similarity.
+    """
+    grouped: dict[tuple, dict] = {}
+    for c in chunks:
+        key = (c.subject, c.chapter, c.section or "")
+        page = (c.page_reference or "").replace("Page", "").strip()
+        src = grouped.get(key)
+        if src is None:
+            grouped[key] = {
+                "subject": c.subject,
+                "chapter": c.chapter,
+                "section": c.section or None,
+                "pages": [page] if page else [],
+                "similarity": round(float(c.similarity), 3),
+                "label": c.citation_label(),
+            }
+        else:
+            if page and page not in src["pages"]:
+                src["pages"].append(page)
+            src["similarity"] = max(src["similarity"], round(float(c.similarity), 3))
+    for src in grouped.values():
+        src["pages"].sort(key=lambda p: int(p) if p.isdigit() else 10**6)
+    return list(grouped.values())
+
+
 def _deduplicate_chunks(chunks: list[RetrievedChunk]) -> list[RetrievedChunk]:
     """Remove duplicate chunks by chunk_id, keeping highest similarity."""
     seen: dict[int, RetrievedChunk] = {}
@@ -73,6 +101,8 @@ async def retrieve_chunks(
                and real-world connections.
     """
     start_time = time.time()
+    from app.utils.subjects import normalize_subject
+    subject = normalize_subject(subject)
 
     # Try main query first
     chunks = await _retrieve_chunks_internal(query, subject, grade, top_k)

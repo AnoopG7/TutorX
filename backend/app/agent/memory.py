@@ -149,6 +149,7 @@ async def append_message(
     content:    str,
     tool_name:  str | None = None,
     tool_input: dict | None = None,
+    sources:    list[dict] | None = None,
 ) -> None:
     """
     Append a single message to the session's messages JSONB array.
@@ -167,6 +168,8 @@ async def append_message(
         entry["tool_name"]  = tool_name
     if tool_input:
         entry["tool_input"] = tool_input
+    if sources:
+        entry["sources"] = sources
 
     messages.append(entry)
     messages = messages[-50:]  # Sliding window
