@@ -62,7 +62,7 @@ class AuthResponse(BaseModel):
 
 
 class SignupResponse(BaseModel):
-    status: str = Field(..., description="'confirm_email' or 'logged_in'")
+    status: str = Field(..., description="'logged_in', or 'created' if the follow-up sign-in failed")
     message: str
     user_id: str | None = None
     token: str | None = None
@@ -94,33 +94,50 @@ def _profile_name(user_id: str, fallback: str = "Student") -> str:
 
 
 # ── Routes ──────────────────────────────────────────────────────────────────
+def _signup_error(e: Exception) -> HTTPException:
+    """Turn a Supabase sign-up error into a message the student can act on."""
+    msg = str(e).lower()
+    status_code = getattr(e, "status", None)
+    if "already" in msg and ("regist" in msg or "exists" in msg) or "email_exists" in msg:
+        return HTTPException(status_code=409, detail="This email already has an account. Sign in instead.")
+    if status_code == 429 or "rate limit" in msg:
+        return HTTPException(status_code=429, detail="Too many sign-ups right now. Wait a few minutes and try again.")
+    if "password" in msg:
+        return HTTPException(status_code=400, detail="Choose a stronger password, with at least 8 characters.")
+    if "email" in msg and ("invalid" in msg or "format" in msg):
+        return HTTPException(status_code=400, detail="That email address can't be used. Check it and try again.")
+    logger.error("Signup failed: %s", e)
+    return HTTPException(status_code=400, detail=f"Sign-up didn't work: {str(e)[:120]}")
+
+
 @router.post("/signup", response_model=SignupResponse)
 def signup(req: SignupRequest):
-    auth = new_auth_client()
-    admin = get_supabase_client()
+    """
+    Create the account with the admin API, already confirmed, then sign in.
 
+    Going through auth.sign_up() made Supabase send a confirmation email for
+    every account, and its email rate limit (a few per hour on the free tier)
+    made sign-up fail for everyone once it was hit.
+    """
+    admin = get_supabase_client()
     try:
-        res = auth.auth.sign_up({
+        created = admin.auth.admin.create_user({
             "email": req.email,
             "password": req.password,
-            "options": {"data": {"name": req.name}},
+            "email_confirm": True,
+            "user_metadata": {"name": req.name},
         })
     except AuthRetryableError as e:
         raise _service_unavailable(e)
     except AuthApiError as e:
-        msg = str(e).lower()
-        if "already" in msg and "regist" in msg:
-            raise HTTPException(status_code=409, detail="This email already has an account. Sign in instead.")
-        if "password" in msg:
-            raise HTTPException(status_code=400, detail="Choose a stronger password, with at least 8 characters.")
-        logger.warning("Signup rejected: %s", e)
-        raise HTTPException(status_code=400, detail="Sign-up didn't work. Check your details and try again.")
+        raise _signup_error(e)
+    except Exception as e:
+        raise _service_unavailable(e)
 
-    if not res.user:
+    if not created or not created.user:
         raise HTTPException(status_code=400, detail="Sign-up didn't work. Try again.")
-    user_id = str(res.user.id)
+    user_id = str(created.user.id)
 
-    # Profile row (exists before email confirmation). Only Class 9 books are ingested today.
     try:
         admin.table("student_profiles").upsert({
             "user_id": user_id,
@@ -136,16 +153,13 @@ def signup(req: SignupRequest):
     except Exception as e:
         logger.warning("Profile creation failed (non-blocking): %s", e)
 
-    session = res.session
-    if not session:
-        # Email confirmation is on in Supabase: confirm via the admin API, then sign in.
-        try:
-            admin.auth.admin.update_user_by_id(user_id, {"email_confirm": True})
-            session = new_auth_client().auth.sign_in_with_password(
-                {"email": req.email, "password": req.password}
-            ).session
-        except Exception as e:
-            logger.warning("Auto-confirm failed: %s", e)
+    try:
+        session = new_auth_client().auth.sign_in_with_password(
+            {"email": req.email, "password": req.password}
+        ).session
+    except Exception as e:
+        logger.warning("Sign-in after sign-up failed: %s", e)
+        session = None
 
     if session:
         return SignupResponse(
@@ -157,10 +171,10 @@ def signup(req: SignupRequest):
             expires_at=session.expires_at,
             name=req.name,
         )
-
+    # Account exists and is confirmed; the student can sign in normally.
     return SignupResponse(
-        status="confirm_email",
-        message="Account created. Check your email to confirm it, then sign in.",
+        status="created",
+        message="Account created. Sign in to continue.",
         user_id=user_id,
         name=req.name,
     )

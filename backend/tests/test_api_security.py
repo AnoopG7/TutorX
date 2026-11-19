@@ -183,3 +183,54 @@ def test_auth_client_uses_implicit_flow(monkeypatch):
     svc.new_auth_client()
     assert captured["options"].flow_type == "implicit"
     assert captured["options"].persist_session is False
+
+
+# ── Sign-up ─────────────────────────────────────────────────────────────────
+def _signup_client(monkeypatch, create_user):
+    """Sign-up goes through the admin API (no confirmation email), then signs in."""
+    from app.api.routes.auth import AuthApiError
+
+    admin = SimpleNamespace(
+        auth=SimpleNamespace(admin=SimpleNamespace(create_user=create_user)),
+        table=lambda name: FakeQuery([]),
+    )
+    session = SimpleNamespace(access_token="at", refresh_token="rt", expires_at=1)
+    signin = SimpleNamespace(auth=SimpleNamespace(sign_in_with_password=lambda creds: SimpleNamespace(session=session)))
+    monkeypatch.setattr(auth_routes, "get_supabase_client", lambda: admin)
+    monkeypatch.setattr(auth_routes, "new_auth_client", lambda: signin)
+    return TestClient(app), AuthApiError
+
+
+BODY = {"email": "new@example.com", "password": "long-enough-1", "name": "New"}
+
+
+def test_signup_creates_confirmed_user_and_signs_in(monkeypatch):
+    calls = []
+
+    def create_user(attrs):
+        calls.append(attrs)
+        return SimpleNamespace(user=SimpleNamespace(id="u1"))
+
+    client, _ = _signup_client(monkeypatch, create_user)
+    res = client.post("/api/auth/signup", json=BODY)
+    assert res.status_code == 200 and res.json()["status"] == "logged_in" and res.json()["refresh_token"] == "rt"
+    assert calls[0]["email_confirm"] is True  # no confirmation email, so no email rate limit
+
+
+@pytest.mark.parametrize("message,status,expected", [
+    ("A user with this email address has already been registered", 422, 409),
+    ("Email rate limit exceeded", 429, 429),
+    ("Password should be at least 8 characters", 422, 400),
+    ("Unable to validate email address: invalid format", 400, 400),
+])
+def test_signup_errors_are_specific(monkeypatch, message, status, expected):
+    holder = {}
+
+    def create_user(attrs):
+        raise holder["err"](message, status, None)
+
+    client, AuthApiError = _signup_client(monkeypatch, create_user)
+    holder["err"] = AuthApiError
+    res = client.post("/api/auth/signup", json=BODY)
+    assert res.status_code == expected
+    assert "Check your details" not in res.json()["detail"]

@@ -16,6 +16,7 @@ export default function LoginPage() {
   const [params] = useSearchParams();
   const expired = params.get('expired') === '1';
   const reset = params.get('reset') === '1';
+  const created = params.get('created') === '1';
 
   // The free server sleeps; if sign-in takes a while, say why.
   useEffect(() => {
@@ -78,6 +79,11 @@ export default function LoginPage() {
       {expired && !formError && (
         <p role="status" className="mb-5 rounded-md border border-border bg-card p-3 text-sm text-muted-foreground">
           You were signed out because your session expired. Sign in again to continue.
+        </p>
+      )}
+      {created && !formError && (
+        <p role="status" className="mb-5 rounded-md border border-success/40 bg-success/10 p-3 text-sm text-success">
+          Your account is ready. Sign in to start studying.
         </p>
       )}
       {reset && !formError && (

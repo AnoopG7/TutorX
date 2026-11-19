@@ -81,7 +81,7 @@ export interface AuthResponse {
 }
 
 export interface SignupResponse {
-  status: 'confirm_email' | 'logged_in';
+  status: 'logged_in' | 'created' | 'confirm_email';
   message: string;
   user_id: string | null;
   token: string | null;

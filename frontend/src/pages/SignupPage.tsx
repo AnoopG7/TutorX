@@ -40,12 +40,14 @@ export default function SignupPage() {
     try {
       const result = await signup(email.trim(), password, name.trim());
       if (result.status === 'logged_in') navigate('/', { replace: true });
+      else if (result.status === 'created') navigate('/login?created=1', { replace: true });
       else setEmailSent(true);
     } catch (err) {
       if (err instanceof APIError) {
         const msg = (err.detail || '').toLowerCase();
         if (msg.includes('already')) setErrors({ email: 'This email already has an account. Sign in instead.' });
         else if (msg.includes('password')) setErrors({ password: 'Choose a stronger password, with at least 8 characters.' });
+        else if (err.status === 429) setFormError(err.detail || 'Too many sign-ups right now. Wait a few minutes and try again.');
         else setFormError(err.status >= 500 ? 'The server is having trouble, or still waking up. Try again in a minute.' : err.detail || 'Sign-up didn’t work. Try again.');
       } else {
         setFormError('Can’t reach the server. Check your connection and try again.');
