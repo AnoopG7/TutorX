@@ -1,12 +1,28 @@
 /**
- * API Client — Wrapper for backend /api/* endpoints
- * Proper error handling, auth injection, request/response logging
+ * API client for the FastAPI backend.
+ *
+ * Auth: Supabase access tokens expire after about an hour. Every request
+ * sends the current access token; on a 401 the client refreshes once with
+ * the stored refresh token and retries. If that fails, the session is
+ * cleared and `onSessionExpired` fires so the app can send the student to
+ * the sign-in page.
  */
+
+export interface SourceRef {
+  subject?: string | null;
+  chapter: string;
+  section?: string | null;
+  pages: string[];
+  similarity?: number | null;
+  label: string;
+}
 
 export interface SessionMessage {
   role: 'user' | 'assistant';
   content: string;
   id?: string;
+  timestamp?: string;
+  sources?: SourceRef[];
 }
 
 export interface SessionHistoryResponse {
@@ -20,8 +36,7 @@ export interface Session {
   subject: string | null;
   chapter: string | null;
   ended_at: string | null;
-  started_at: string;
-  updated_at: string;
+  updated_at?: string | null;
   created_at: string;
 }
 
@@ -30,7 +45,6 @@ export interface SessionsListResponse {
 }
 
 export interface ChatRequest {
-  user_id: string;
   message: string;
   subject?: string;
   chapter?: string;
@@ -40,8 +54,10 @@ export interface ChatRequest {
 export interface ChatResponse {
   response: string;
   citations?: string[];
+  sources?: SourceRef[];
   session_id: string;
   tools_used?: string[];
+  grounded?: boolean;
 }
 
 export interface ProfileResponse {
@@ -56,19 +72,10 @@ export interface ProfileResponse {
   total_sessions: number;
 }
 
-export interface SignupRequest {
-  email: string;
-  password: string;
-  name: string;
-}
-
-export interface LoginRequest {
-  email: string;
-  password: string;
-}
-
 export interface AuthResponse {
   token: string;
+  refresh_token?: string | null;
+  expires_at?: number | null;
   user_id: string;
   name: string;
 }
@@ -78,178 +85,218 @@ export interface SignupResponse {
   message: string;
   user_id: string | null;
   token: string | null;
+  refresh_token?: string | null;
+  expires_at?: number | null;
   name: string | null;
 }
 
 export class APIError extends Error {
   status: number;
-  statusText: string;
   detail?: string;
 
-  constructor(status: number, statusText: string, detail?: string) {
-    super(detail || statusText);
+  constructor(status: number, detail?: string) {
+    super(detail || `Request failed (${status})`);
     this.name = 'APIError';
     this.status = status;
-    this.statusText = statusText;
     this.detail = detail;
   }
 }
 
+const TOKEN_KEY = 'auth-token';
+const REFRESH_KEY = 'auth-refresh';
+const USER_KEY = 'auth-user';
+
+function readStorage(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeStorage(key: string, value: string | null) {
+  try {
+    if (value === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
+  } catch {
+    /* storage unavailable (private mode) */
+  }
+}
+
 class APIClient {
-  // In prod, set VITE_API_URL to your backend origin (e.g. https://tutorx-backend.onrender.com)
-  // In dev without it, uses '/api' which Vite proxies to localhost:8000
+  // In prod VITE_API_URL is the backend origin; in dev '/api' is proxied by Vite.
   private baseURL = (() => {
     const url = import.meta.env.VITE_API_URL;
-    if (url) {
-      // Strip trailing slash, append /api
-      return url.replace(/\/+$/, '') + '/api';
-    }
-    return '/api';
+    return url ? url.replace(/\/+$/, '') + '/api' : '/api';
   })();
 
-  private getAuthToken(): string | null {
-    return localStorage.getItem('auth-token');
+  private refreshing: Promise<boolean> | null = null;
+  onSessionExpired: (() => void) | null = null;
+
+  // ── Session storage ────────────────────────────────────────────────────
+  saveSession(auth: AuthResponse) {
+    writeStorage(TOKEN_KEY, auth.token);
+    if (auth.refresh_token) writeStorage(REFRESH_KEY, auth.refresh_token);
+    writeStorage(USER_KEY, JSON.stringify({ user_id: auth.user_id, name: auth.name }));
   }
 
-  private setAuthToken(token: string): void {
-    localStorage.setItem('auth-token', token);
+  clearSession() {
+    writeStorage(TOKEN_KEY, null);
+    writeStorage(REFRESH_KEY, null);
+    writeStorage(USER_KEY, null);
   }
 
-  private clearAuthToken(): void {
-    localStorage.removeItem('auth-token');
-  }
-
-  private async handleResponse<T>(response: Response): Promise<T> {
-    let data: Record<string, unknown>;
+  storedUser(): { user_id: string; name: string } | null {
+    if (!readStorage(TOKEN_KEY)) return null;
     try {
-      data = await response.json() as Record<string, unknown>;
+      const u = JSON.parse(readStorage(USER_KEY) || 'null');
+      return u?.user_id ? { user_id: u.user_id, name: u.name || 'Student' } : null;
     } catch {
-      data = { detail: response.statusText };
+      return null;
     }
+  }
 
-    console.log('📊 [Frontend] Response details:', {
-      status: response.status,
-      statusText: response.statusText,
-      ok: response.ok,
-      headers: {
-        contentType: response.headers.get('content-type'),
-        corsHeaders: response.headers.get('access-control-allow-origin')
-      },
-      body: data
-    });
-
+  // ── Transport ──────────────────────────────────────────────────────────
+  private async parse<T>(response: Response): Promise<T> {
+    let data: Record<string, unknown> = {};
+    try {
+      data = (await response.json()) as Record<string, unknown>;
+    } catch {
+      /* empty or non-JSON body */
+    }
     if (!response.ok) {
-      const detail = data?.detail || data?.message || response.statusText;
-      console.error('❌ [Frontend] API Error:', {
-        status: response.status,
-        detail: detail
-      });
-      throw new APIError(response.status, response.statusText, String(detail));
+      const detail = data.detail;
+      const message = typeof detail === 'string' ? detail : response.statusText;
+      throw new APIError(response.status, message);
     }
-
     return data as T;
   }
 
-  private getHeaders(): HeadersInit {
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-    };
-
-    const token = this.getAuthToken();
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    return headers;
+  private async refreshSession(): Promise<boolean> {
+    const refreshToken = readStorage(REFRESH_KEY);
+    if (!refreshToken) return false;
+    // Share one refresh between concurrent 401s.
+    this.refreshing ??= (async () => {
+      try {
+        const res = await fetch(`${this.baseURL}/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: refreshToken }),
+        });
+        if (!res.ok) return false;
+        this.saveSession((await res.json()) as AuthResponse);
+        return true;
+      } catch {
+        return false;
+      } finally {
+        setTimeout(() => (this.refreshing = null), 0);
+      }
+    })();
+    return this.refreshing;
   }
 
-  async signup(req: SignupRequest): Promise<SignupResponse> {
-    const response = await fetch(`${this.baseURL}/auth/signup`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(req),
+  private async request<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
+    const token = readStorage(TOKEN_KEY);
+    const response = await fetch(`${this.baseURL}${path}`, {
+      ...init,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...init.headers,
+      },
     });
 
-    const result = await this.handleResponse<SignupResponse>(response);
-
-    // Only set token if auto-confirmed (no email verification needed)
-    if (result.status === 'logged_in' && result.token) {
-      this.setAuthToken(result.token);
+    if (response.status === 401 && token && retry) {
+      if (await this.refreshSession()) return this.request<T>(path, init, false);
+      this.clearSession();
+      this.onSessionExpired?.();
     }
+    return this.parse<T>(response);
+  }
 
+  private post<T>(path: string, body?: unknown) {
+    return this.request<T>(path, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) });
+  }
+
+  // ── Auth ───────────────────────────────────────────────────────────────
+  async signup(req: { email: string; password: string; name: string }): Promise<SignupResponse> {
+    const result = await this.parse<SignupResponse>(
+      await fetch(`${this.baseURL}/auth/signup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(req),
+      }),
+    );
+    if (result.status === 'logged_in' && result.token && result.user_id) {
+      this.saveSession({
+        token: result.token,
+        refresh_token: result.refresh_token,
+        user_id: result.user_id,
+        name: result.name || req.name,
+      });
+    }
     return result;
   }
 
-  async login(req: LoginRequest): Promise<AuthResponse> {
-    const response = await fetch(`${this.baseURL}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(req),
-    });
-
-    const result = await this.handleResponse<AuthResponse>(response);
-    this.setAuthToken(result.token);
+  async login(req: { email: string; password: string }): Promise<AuthResponse> {
+    const result = await this.parse<AuthResponse>(
+      await fetch(`${this.baseURL}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(req),
+      }),
+    );
+    this.saveSession(result);
     return result;
   }
 
-  logout(): void {
-    this.clearAuthToken();
+  async forgotPassword(email: string): Promise<{ message: string }> {
+    return this.parse(
+      await fetch(`${this.baseURL}/auth/forgot-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      }),
+    );
   }
 
-  async chat(req: ChatRequest): Promise<ChatResponse> {
-    const response = await fetch(`${this.baseURL}/chat`, {
-      method: 'POST',
-      headers: this.getHeaders(),
-      body: JSON.stringify(req),
-    });
-
-    return this.handleResponse<ChatResponse>(response);
+  async resetPassword(accessToken: string, password: string): Promise<{ message: string }> {
+    return this.parse(
+      await fetch(`${this.baseURL}/auth/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ access_token: accessToken, password }),
+      }),
+    );
   }
 
-  async getProfile(userId: string): Promise<ProfileResponse> {
-    const response = await fetch(`${this.baseURL}/profile/${userId}`, {
-      method: 'GET',
-      headers: this.getHeaders(),
-    });
-
-    return this.handleResponse<ProfileResponse>(response);
+  logout() {
+    this.clearSession();
   }
 
-  async updateProfile(userId: string, data: Partial<ProfileResponse>): Promise<ProfileResponse> {
-    const response = await fetch(`${this.baseURL}/profile/${userId}`, {
-      method: 'PUT',
-      headers: this.getHeaders(),
-      body: JSON.stringify(data),
-    });
-
-    return this.handleResponse<ProfileResponse>(response);
+  // ── Data ───────────────────────────────────────────────────────────────
+  chat(req: ChatRequest) {
+    return this.post<ChatResponse>('/chat', req);
   }
 
-  async getSessions(userId: string, limit: number = 20): Promise<SessionsListResponse> {
-    const response = await fetch(`${this.baseURL}/chat/sessions/${userId}?limit=${limit}`, {
-      method: 'GET',
-      headers: this.getHeaders(),
-    });
-
-    return this.handleResponse<SessionsListResponse>(response);
+  getProfile(userId: string) {
+    return this.request<ProfileResponse>(`/profile/${userId}`);
   }
 
-  async getSessionHistory(userId: string, sessionId: string): Promise<SessionHistoryResponse> {
-    const response = await fetch(`${this.baseURL}/chat/sessions/${userId}/${sessionId}/history`, {
-      method: 'GET',
-      headers: this.getHeaders(),
-    });
-
-    return this.handleResponse<SessionHistoryResponse>(response);
+  updateProfile(userId: string, data: Partial<ProfileResponse>) {
+    return this.request<ProfileResponse>(`/profile/${userId}`, { method: 'PUT', body: JSON.stringify(data) });
   }
 
-  async closeSession(sessionId: string): Promise<{ status: string }> {
-    const response = await fetch(`${this.baseURL}/chat/sessions/${sessionId}/close`, {
-      method: 'POST',
-      headers: this.getHeaders(),
-    });
+  getSessions(userId: string, limit = 20) {
+    return this.request<SessionsListResponse>(`/chat/sessions/${userId}?limit=${limit}`);
+  }
 
-    return this.handleResponse<{ status: string }>(response);
+  getSessionHistory(userId: string, sessionId: string) {
+    return this.request<SessionHistoryResponse>(`/chat/sessions/${userId}/${sessionId}/history`);
+  }
+
+  closeSession(sessionId: string) {
+    return this.post<{ status: string }>(`/chat/sessions/${sessionId}/close`);
   }
 }
 

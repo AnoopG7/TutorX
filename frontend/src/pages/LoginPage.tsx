@@ -1,49 +1,59 @@
-import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/providers/AuthProvider';
 import { APIError } from '@/lib/api';
-import { AlertCircle, Loader2, Eye, EyeOff } from 'lucide-react';
+import { AuthLayout, Field, FormAlert, SubmitButton } from '@/components/auth/AuthLayout';
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const { login, loading: authLoading } = useAuth();
+  const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-const [_needsConfirmation, setNeedsConfirmation] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [slow, setSlow] = useState(false);
+  const [params] = useSearchParams();
+  const expired = params.get('expired') === '1';
+  const reset = params.get('reset') === '1';
 
-  const validate = () => {
-    const newErrors: { email?: string; password?: string } = {};
-    if (!email.trim()) newErrors.email = 'Email is required';
-    else if (!email.includes('@')) newErrors.email = 'Invalid email format';
-    if (!password) newErrors.password = 'Password is required';
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
+  // The free server sleeps; if sign-in takes a while, say why.
+  useEffect(() => {
+    if (!loading) return;
+    const t = setTimeout(() => setSlow(true), 5000);
+    return () => {
+      clearTimeout(t);
+      setSlow(false);
+    };
+  }, [loading]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setNeedsConfirmation(false);
-    if (!validate()) return;
-    setLoading(true);
+    setFormError(null);
+    const next: typeof errors = {};
+    if (!email.trim()) next.email = 'Enter your email address.';
+    else if (!/^\S+@\S+\.\S+$/.test(email.trim())) next.email = 'That doesn’t look like an email address.';
+    if (!password) next.password = 'Enter your password.';
+    setErrors(next);
+    if (Object.keys(next).length) return;
 
+    setLoading(true);
     try {
-      await login(email, password);
+      await login(email.trim(), password);
       navigate('/');
     } catch (err) {
       if (err instanceof APIError) {
-        if (err.status === 403 || err.detail?.includes('confirm')) {
-          setErrors({ email: 'Confirm your email first' });
+        if (err.status === 403 || err.detail?.toLowerCase().includes('confirm')) {
+          setFormError('Confirm your email first. Open the link we sent you, then sign in.');
+        } else if (err.status === 429) {
+          setFormError(err.detail || 'Too many attempts. Wait a few minutes and try again.');
+        } else if (err.status >= 500) {
+          setFormError('The server is having trouble, or still waking up. Try again in a minute.');
         } else {
-          setErrors({ password: err.detail || 'Invalid credentials' });
+          setFormError('That email and password don’t match. Check them, or reset your password.');
         }
-      } else if (err instanceof Error) {
-        setErrors({ password: err.message });
       } else {
-        setErrors({ password: 'Something went wrong' });
+        setFormError('Can’t reach the server. Check your connection and try again.');
       }
     } finally {
       setLoading(false);
@@ -51,101 +61,65 @@ const [_needsConfirmation, setNeedsConfirmation] = useState(false);
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="bg-card border border-border rounded-2xl p-8 shadow-lg">
-          <div className="text-center mb-8">
-            <Link to="/home" className="inline-flex items-center gap-2 mb-6">
-              <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-violet-500 to-amber-500" />
-              <span className="font-semibold text-lg">TutorX</span>
+    <AuthLayout
+      title="Welcome back"
+      subtitle="Sign in to continue where you left off."
+      footer={
+        <>
+          New to TutorX?{' '}
+          <Link to="/signup" className="font-medium text-link underline-offset-4 hover:underline">
+            Create an account
+          </Link>
+        </>
+      }
+    >
+      {expired && !formError && (
+        <p role="status" className="mb-5 rounded-md border border-border bg-card p-3 text-sm text-muted-foreground">
+          You were signed out because your session expired. Sign in again to continue.
+        </p>
+      )}
+      {reset && !formError && (
+        <p role="status" className="mb-5 rounded-md border border-success/40 bg-success/10 p-3 text-sm text-success">
+          Password updated. Sign in with your new password.
+        </p>
+      )}
+      {formError && <FormAlert>{formError}</FormAlert>}
+      <form onSubmit={handleSubmit} noValidate className="space-y-5">
+        <Field
+          label="Email"
+          name="email"
+          type="email"
+          autoComplete="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="you@example.com"
+          error={errors.email}
+          disabled={loading}
+        />
+        <Field
+          label="Password"
+          name="password"
+          type="password"
+          autoComplete="current-password"
+          trailing={
+            <Link to="/forgot-password" className="text-xs font-medium text-link underline-offset-4 hover:underline">
+              Forgot password?
             </Link>
-            <h1 className="text-2xl font-bold">Welcome back</h1>
-            <p className="text-sm text-muted-foreground mt-1">Sign in to continue</p>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div>
-              <label className="block text-sm font-medium mb-1.5">Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                className={`w-full px-4 py-2.5 rounded-xl border bg-background text-sm focus:outline-none focus:ring-2 transition-colors ${
-                  errors.email 
-                    ? 'border-red-500 focus:ring-red-500/50' 
-                    : 'border-border focus:ring-primary/50 focus:border-primary'
-                }`}
-                disabled={loading || authLoading}
-              />
-              {errors.email && (
-                <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
-                  <AlertCircle className="h-3 w-3" />
-                  {errors.email}
-                </p>
-              )}
-            </div>
-
-            <div>
-              <div className="flex justify-between items-center mb-1.5">
-                <label className="text-sm font-medium">Password</label>
-                <Link to="/forgot-password" className="text-xs text-primary hover:underline">
-                  Forgot?
-                </Link>
-              </div>
-              <div className="relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className={`w-full px-4 py-2.5 rounded-xl border bg-background text-sm pr-10 focus:outline-none focus:ring-2 transition-colors ${
-                    errors.password 
-                      ? 'border-red-500 focus:ring-red-500/50' 
-                      : 'border-border focus:ring-primary/50 focus:border-primary'
-                  }`}
-                  disabled={loading || authLoading}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-              {errors.password && (
-                <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
-                  <AlertCircle className="h-3 w-3" />
-                  {errors.password}
-                </p>
-              )}
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading || authLoading}
-              className="w-full py-2.5 px-4 bg-primary text-primary-foreground rounded-xl font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity flex items-center justify-center gap-2"
-            >
-              {loading || authLoading ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Signing in...
-                </>
-              ) : (
-                'Sign In'
-              )}
-            </button>
-          </form>
-
-          <p className="text-center text-sm text-muted-foreground mt-6">
-            No account?{' '}
-            <Link to="/signup" className="text-primary font-medium hover:underline">
-              Sign up
-            </Link>
+          }
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          error={errors.password}
+          disabled={loading}
+        />
+        <SubmitButton loading={loading} loadingText={slow ? 'Waking up the server…' : 'Signing in…'}>
+          Sign in
+        </SubmitButton>
+        {slow && (
+          <p className="text-center text-xs text-muted-foreground">
+            The free server sleeps when nobody is using it. The first sign-in can take up to a minute.
           </p>
-        </div>
-      </div>
-    </div>
+        )}
+      </form>
+    </AuthLayout>
   );
 }
