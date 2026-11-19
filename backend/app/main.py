@@ -30,7 +30,7 @@ settings = get_settings()
 
 app = FastAPI(
     title="TutorX — CBSE Study Agent",
-    description="LlamaIndex ReAct tutoring agent grounded in NCERT textbooks",
+    description="RAG tutoring API grounded in NCERT Class 9 textbooks",
     version="0.1.0",
     lifespan=lifespan,
 )
@@ -38,9 +38,11 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.get_cors_origins(),
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origin_regex=settings.cors_origin_regex or None,
+    # Auth uses Bearer tokens, not cookies, so credentials aren't needed.
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 # ── Routes ──────────────────────────────────────────────────────────────────
@@ -61,6 +63,34 @@ async def telegram_webhook():
 @app.get("/health", tags=["System"])
 async def health_check():
     return {"status": "healthy", "service": "TutorX CBSE Agent", "version": "0.1.0"}
+
+
+@app.get("/health/ready", tags=["System"])
+async def readiness():
+    """
+    Deeper check for debugging deployments: can we reach the database,
+    and can we embed a query (i.e. will answers be grounded in the textbook)?
+    Not polled by the frontend; /health stays cheap.
+    """
+    from app.rag.embedder import embed_text
+    from app.services.supabase_service import get_supabase_client
+
+    checks: dict[str, dict] = {}
+    try:
+        res = get_supabase_client().table("textbook_chunks").select("id", count="exact").limit(1).execute()
+        checks["database"] = {"ok": True, "textbook_chunks": res.count}
+    except Exception as e:
+        checks["database"] = {"ok": False, "error": type(e).__name__}
+
+    try:
+        await embed_text("photosynthesis")
+        checks["embeddings"] = {"ok": True, "provider": settings.embedding_provider}
+    except Exception as e:
+        checks["embeddings"] = {"ok": False, "provider": settings.embedding_provider, "error": str(e)[:160]}
+
+    checks["llm"] = {"ok": bool(settings.groq_api_key), "model": settings.groq_model}
+    ready = all(c["ok"] for c in checks.values())
+    return JSONResponse({"ready": ready, "checks": checks}, status_code=200 if ready else 503)
 
 
 @app.get("/", tags=["System"])

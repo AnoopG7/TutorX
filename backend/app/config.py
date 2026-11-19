@@ -24,6 +24,23 @@ class Settings(BaseSettings):
 
     # CORS - from CORS_ORIGINS env var (comma-separated URLs on Render dashboard)
     cors_origins: str = ""
+    # Optional regex for preview deployments, e.g. ^https://tutor-[a-z0-9]+-anoop-guptas-projects-[a-z0-9]+\.vercel\.app$
+    cors_origin_regex: str = ""
+
+    # Public URL of the frontend, used in password-reset emails.
+    frontend_url: str = "http://localhost:5173"
+
+    # Auth. When False (the default), every user-scoped route requires a valid
+    # Supabase Bearer token. Only enable for local scripts like chat_cli.py.
+    allow_insecure_dev_auth: bool = False
+
+    # Embeddings for query-time retrieval. Must produce the same 768-dim
+    # nomic-embed-text vectors the textbook chunks were ingested with.
+    #   "ollama" — local/self-hosted Ollama (OLLAMA_BASE_URL)
+    #   "nomic"  — Nomic's hosted API (NOMIC_API_KEY), same model family
+    embedding_provider: str = "ollama"
+    ollama_base_url: str = "http://localhost:11434"
+    nomic_api_key: str = ""
 
     # Environment
     environment: str = "development"
@@ -37,8 +54,8 @@ class Settings(BaseSettings):
         """Parse comma-separated CORS origins from env var."""
         if not self.cors_origins:
             return ["http://localhost:3000", "http://localhost:5173"]
-        origins = [url.strip() for url in self.cors_origins.split(",")]
-        return origins
+        # Browsers send Origin without a trailing slash, so "https://x.app/" would never match.
+        return [url.strip().rstrip("/") for url in self.cors_origins.split(",") if url.strip()]
 
 
 @lru_cache()
