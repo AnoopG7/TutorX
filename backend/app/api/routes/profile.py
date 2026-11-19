@@ -1,13 +1,14 @@
 """
 Profile routes — student profile management, weak areas, chapter/subject listing.
-All routes authenticated via Supabase JWT.
+User-scoped routes require a Supabase access token for the same user.
 """
 
 from fastapi import APIRouter, HTTPException, Depends, Path, Body
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Literal, Optional
 from app.agent.memory import get_student_profile, update_student_profile
-from app.api.auth import get_current_user_id
+from app.api.auth import AuthUser, ensure_same_user, get_current_user, get_current_user_id
+from app.utils.subjects import normalize_subjects
 from app.services.supabase_service import get_supabase_client
 import logging
 
@@ -18,19 +19,17 @@ router = APIRouter()
 # ── Profile Models ──────────────────────────────────────────────────────────
 class ProfileUpdateRequest(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=100)
-    grade: Optional[int] = Field(None, ge=9, le=12)
+    grade: Optional[int] = Field(None, ge=9, le=10)
     subjects: Optional[list[str]] = Field(None, min_items=1)
-    teaching_style: Optional[str] = Field(
-        None,
-        description="One of: 'definition_first', 'analogy_first', 'example_first', 'socratic'",
-    )
+    teaching_style: Optional[Literal["definition_first", "analogy_first", "example_first", "socratic"]] = None
     custom_instructions: Optional[str] = Field(None, max_length=500)
 
 
 # ── Profile Endpoints ──────────────────────────────────────────────────────
 @router.get("/profile/{user_id}")
-async def get_profile(user_id: str = Path(...)):
-    """Get student profile by user_id. Auto-create if doesn't exist."""
+def get_profile(user_id: str = Path(...), user: AuthUser = Depends(get_current_user)):
+    """Get the caller's profile. Auto-create it if it doesn't exist."""
+    ensure_same_user(user, user_id)
     try:
         client = get_supabase_client()
         res = (
@@ -46,7 +45,7 @@ async def get_profile(user_id: str = Path(...)):
                 "user_id": profile["user_id"],
                 "name": profile.get("name", ""),
                 "grade": profile.get("grade", 9),
-                "subjects": profile.get("subjects", []),
+                "subjects": normalize_subjects(profile.get("subjects")),
                 "teaching_style": profile.get("teaching_style", "example_first"),
                 "custom_instructions": profile.get("custom_instructions", ""),
                 "weak_areas": profile.get("weak_areas", []),
@@ -58,8 +57,8 @@ async def get_profile(user_id: str = Path(...)):
         logger.info(f"Creating new profile for user {user_id}")
         new_profile = {
             "user_id": user_id,
-            "email": f"user_{user_id}@tutorx.local",  # Generate default email
-            "name": "",
+            "email": user.email,
+            "name": user.name or "Student",
             "grade": 9,
             "subjects": [],
             "teaching_style": "example_first",
@@ -87,15 +86,17 @@ async def get_profile(user_id: str = Path(...)):
         }
     except Exception as e:
         logger.error(f"Error handling profile for {user_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error handling profile: {str(e)}")
+        raise HTTPException(status_code=500, detail="Couldn't load your profile. Try again.")
 
 
 @router.put("/profile/{user_id}")
-async def update_profile(
+def update_profile(
     user_id: str = Path(...),
     req: ProfileUpdateRequest = Body(...),
+    user: AuthUser = Depends(get_current_user),
 ):
-    """Update student profile (name, grade, subjects, teaching_style)."""
+    """Update the caller's profile (name, grade, subjects, teaching_style)."""
+    ensure_same_user(user, user_id)
     try:
         client = get_supabase_client()
 
@@ -116,7 +117,7 @@ async def update_profile(
         if req.grade is not None:
             update_data["grade"] = req.grade
         if req.subjects is not None:
-            update_data["subjects"] = req.subjects
+            update_data["subjects"] = normalize_subjects(req.subjects)
         if req.teaching_style is not None:
             update_data["teaching_style"] = req.teaching_style
         if req.custom_instructions is not None:
@@ -141,7 +142,7 @@ async def update_profile(
             "user_id": updated["user_id"],
             "name": updated.get("name", ""),
             "grade": updated.get("grade", 9),
-            "subjects": updated.get("subjects", []),
+            "subjects": normalize_subjects(updated.get("subjects")),
             "teaching_style": updated.get("teaching_style", "example_first"),
             "custom_instructions": updated.get("custom_instructions", ""),
             "weak_areas": updated.get("weak_areas", []),
@@ -152,7 +153,7 @@ async def update_profile(
         raise
     except Exception as e:
         logger.error(f"Error updating profile for {user_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error updating profile: {str(e)}")
+        raise HTTPException(status_code=500, detail="Couldn't save your profile. Try again.")
 
 
 @router.get("/student/weak-areas")

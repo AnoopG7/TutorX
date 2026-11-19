@@ -8,6 +8,10 @@ Two clients:
 The frontend uses the ANON key for client-side auth.
 """
 from supabase import create_client, Client
+try:
+    from supabase.lib.client_options import SyncClientOptions
+except ImportError:  # pragma: no cover - older supabase-py
+    from supabase.lib.client_options import ClientOptions as SyncClientOptions
 from app.config import get_settings
 import logging
 
@@ -52,6 +56,22 @@ def get_supabase_client() -> Client:
     if _admin_client is None:
         raise RuntimeError("Supabase not initialised. Call init_supabase() first (done at startup).")
     return _admin_client
+
+
+def new_auth_client() -> Client:
+    """
+    A fresh, stateless ANON client for one auth call (sign-in, refresh, reset).
+
+    supabase-py stores the signed-in session on the client object, so sharing
+    one client across requests leaks one user's session into the next request.
+    """
+    settings = get_settings()
+    key = settings.supabase_key or settings.supabase_service_role_key
+    return create_client(
+        settings.supabase_url,
+        key,
+        options=SyncClientOptions(auto_refresh_token=False, persist_session=False),
+    )
 
 
 def get_supabase_auth_client() -> Client:
