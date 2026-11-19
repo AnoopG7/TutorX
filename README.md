@@ -100,7 +100,7 @@ User Message
   │
   ▼
 ┌─────────────────────────┐
-│ 1. Embed Query          │ ← nomic-embed-text, 768-dim (Ollama or Nomic API)
+│ 1. Embed Query          │ ← nomic-embed-text-v1.5, 768-dim (FastEmbed, in-process)
 │ 2. Vector Search        │ ← pgvector RPC with fallback chain
 │ 3. Query Reformulation  │ ← Groq LLM (conditional: if retrieval weak)
 │ 4. Chunk Enrichment     │ ← Groq LLM (conditional: if match found)
@@ -371,7 +371,7 @@ All user routes require `Authorization: Bearer <access token>` and only return t
 | Service | Tier | Cost |
 |---------|------|------|
 | Groq (LLM) | Free | $0/month |
-| Embeddings | Ollama locally, Nomic API free tier in production | $0/month |
+| Embeddings | FastEmbed, in-process | $0/month |
 | Supabase (Database) | Free (500MB) | $0/month |
 | Vercel (Frontend) | Free | $0/month |
 | Render (Backend) | Free (750 hrs) | $0/month |
@@ -384,7 +384,7 @@ All user routes require `Authorization: Bearer <access token>` and only return t
 - **Frontend**: `cd frontend && npm run build` → deploy to Vercel
 - **Backend**: Push to GitHub → Render auto-deploys via `Procfile`
 - **Database**: Supabase SQL Editor for schema + RPC functions
-- **Embeddings**: Render has no Ollama, so set `EMBEDDING_PROVIDER=nomic` and `NOMIC_API_KEY`, or point `OLLAMA_BASE_URL` at a hosted Ollama. Check `GET /health/ready` after deploying.
+- **Embeddings**: the backend runs `nomic-embed-text-v1.5` itself with FastEmbed (ONNX, CPU, no API key). After changing the model, run the **Re-embed textbook** GitHub Action so stored passages match; it also reports retrieval accuracy. Check `GET /health/ready` after deploying.
 
 Backend environment (Render):
 
@@ -394,7 +394,7 @@ Backend environment (Render):
 | `GROQ_API_KEY` | LLM |
 | `CORS_ORIGINS` | Comma-separated frontend origins, e.g. `https://anoop-tutorx.vercel.app` |
 | `FRONTEND_URL` | Used in password-reset emails; also add `{FRONTEND_URL}/reset-password` to Supabase → Auth → Redirect URLs |
-| `EMBEDDING_PROVIDER`, `NOMIC_API_KEY`, `OLLAMA_BASE_URL` | Query embeddings (see above) |
+| `EMBEDDING_PROVIDER` | Optional; defaults to `fastembed` (no key needed) |
 
 ---
 

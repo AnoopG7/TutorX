@@ -21,6 +21,10 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 TutorX starting up...")
     init_supabase()
     logger.info("✅ Supabase connected")
+    # Load the embedding model in the background so the first question isn't slow.
+    import threading
+    from app.rag.embedder import warm_up
+    threading.Thread(target=warm_up, name="embedder-warmup", daemon=True).start()
     logger.info("✅ TutorX ready — agent loop active")
     yield
     logger.info("🛑 TutorX shutting down")

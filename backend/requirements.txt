@@ -11,7 +11,10 @@ pydantic[email]>=2.11,<3
 # Agent framework — llama-index 0.12+ ecosystem (all packages must align)
 llama-index-core>=0.12.0
 llama-index-llms-groq>=0.3.0
-llama-index-embeddings-ollama>=0.5.0
+llama-index-embeddings-ollama>=0.5.0   # local development only
+
+# Query + passage embeddings in production (ONNX on CPU, no API key)
+fastembed>=0.7,<1
 
 # PDF ingestion
 pdfplumber>=0.11.0

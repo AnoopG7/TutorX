@@ -34,11 +34,14 @@ class Settings(BaseSettings):
     # Supabase Bearer token. Only enable for local scripts like chat_cli.py.
     allow_insecure_dev_auth: bool = False
 
-    # Embeddings for query-time retrieval. Must produce the same 768-dim
-    # nomic-embed-text vectors the textbook chunks were ingested with.
-    #   "ollama" — local/self-hosted Ollama (OLLAMA_BASE_URL)
-    #   "nomic"  — Nomic's hosted API (NOMIC_API_KEY), same model family
-    embedding_provider: str = "ollama"
+    # Embeddings. Stored passages and live queries must use the same provider
+    # and model (see app/rag/embedder.py).
+    #   "fastembed" — in-process ONNX model, no API key (default; works on Render)
+    #   "ollama"    — local Ollama (OLLAMA_BASE_URL), for development
+    #   "nomic"     — Nomic's hosted API (NOMIC_API_KEY)
+    embedding_provider: str = "fastembed"
+    fastembed_model: str = "nomic-ai/nomic-embed-text-v1.5-Q"
+    fastembed_cache_dir: str = ".cache/fastembed"
     ollama_base_url: str = "http://localhost:11434"
     nomic_api_key: str = ""
 

@@ -1,0 +1,49 @@
+# Re-embed every textbook passage with the backend's embedding model, then
+# report retrieval accuracy. Runs on GitHub's servers, so the model download
+# doesn't depend on your network.
+#
+# One-time setup: GitHub repo → Settings → Secrets and variables → Actions →
+# add SUPABASE_URL, SUPABASE_KEY and SUPABASE_SERVICE_ROLE_KEY.
+# Run: Actions tab → "Re-embed textbook" → Run workflow.
+name: Re-embed textbook
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Embed one batch only and write nothing"
+        type: boolean
+        default: false
+
+jobs:
+  reembed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      EMBEDDING_PROVIDER: fastembed
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r requirements.txt
+      - name: Offline tests
+        run: python -m pytest -q tests
+      - name: Re-embed passages
+        run: python -m scripts.reembed ${{ inputs.dry_run && '--dry-run' || '' }}
+      - name: Retrieval accuracy (exact search)
+        if: ${{ !inputs.dry_run }}
+        run: |
+          { echo '### Retrieval accuracy (exact search)'; echo '```'; python -m scripts.eval_retrieval --exact; echo '```'; } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Retrieval accuracy (database index)
+        if: ${{ !inputs.dry_run }}
+        run: |
+          { echo '### Retrieval accuracy (database index)'; echo '```'; python -m scripts.eval_retrieval; echo '```'; } | tee -a "$GITHUB_STEP_SUMMARY"

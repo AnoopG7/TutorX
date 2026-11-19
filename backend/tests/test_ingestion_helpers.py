@@ -44,3 +44,25 @@ def test_detects_krutidev_but_not_unicode_or_english():
 def test_parse_filename(name, subject, number, label):
     meta = parse_filename(Path(name))
     assert (meta["subject"], meta["number"], meta["label"]) == (subject, number, label)
+
+
+def test_fastembed_provider_adds_nomic_prefixes(monkeypatch):
+    """Queries and passages must carry nomic's task prefixes, or stored and live vectors won't match."""
+    import asyncio
+
+    import numpy as np
+
+    import app.rag.embedder as emb
+
+    seen = []
+
+    class FakeModel:
+        def embed(self, texts, batch_size=16):
+            seen.extend(texts)
+            return [np.zeros(emb.EMBED_DIM) for _ in texts]
+
+    monkeypatch.setattr(emb, "provider_name", lambda: "fastembed")
+    monkeypatch.setattr(emb, "_fastembed", lambda: FakeModel())
+    asyncio.run(emb.embed_text("what is a cell?"))
+    asyncio.run(emb.embed_batch(["The cell is the unit of life."]))
+    assert seen == ["search_query: what is a cell?", "search_document: The cell is the unit of life."]
