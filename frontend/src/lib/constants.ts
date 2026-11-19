@@ -83,11 +83,11 @@ export const SUBJECT_LIST: SubjectConfig[] = [
     icon: Languages,
     ink: 'text-rose-700 dark:text-[#E2A9A0]',
     tint: 'bg-rose-600/10 dark:bg-[#E2A9A0]/10',
-    books: 'Kshitij, Kritika, Sparsh, Sanchayan',
+    books: 'Sparsh, Sanchayan',
     prompts: [
-      '“दो बैलों की कथा” का सारांश बताइए',
-      'प्रेमचंद की लेखन शैली की विशेषताएँ क्या हैं?',
-      '“ल्हासा की ओर” पाठ से हमें क्या सीख मिलती है?',
+      '“गिल्लू” पाठ में महादेवी वर्मा और गिल्लू का रिश्ता कैसा था?',
+      'बचेंद्री पाल की एवरेस्ट यात्रा से हमें क्या सीख मिलती है?',
+      '“तुम कब जाओगे, अतिथि” में लेखक की परेशानी क्या है?',
     ],
   },
 ];

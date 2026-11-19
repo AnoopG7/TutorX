@@ -89,62 +89,64 @@ export default function DashboardPage() {
           </ul>
         </section>
 
-        {/* Recent sessions */}
-        <section className="mt-12" aria-labelledby="recent">
-          <h2 id="recent" className="font-serif text-lg font-semibold">
-            Pick up where you left off
+        {/* Starter questions: one per subject */}
+        <section className="mt-12" aria-labelledby="try">
+          <h2 id="try" className="font-serif text-lg font-semibold">
+            Try asking
           </h2>
-          {loading ? (
-            <div className="mt-3 space-y-2">
-              {[0, 1, 2].map((i) => (
-                <div key={i} className="h-12 animate-pulse rounded-md bg-muted" />
-              ))}
-            </div>
-          ) : sessions.length === 0 ? (
-            <div className="mt-3 rounded-lg border border-dashed border-border p-5">
-              <p className="text-sm text-muted-foreground">
-                Nothing here yet. Try one of these to get started:
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {SUBJECT_LIST.slice(0, 3).map((s) => (
-                  <button
-                    key={s.id}
-                    onClick={() => ask(s.prompts[0], s.id)}
-                    className="rounded-full border border-border bg-card px-3 py-1.5 text-left text-sm hover:border-primary/40"
-                  >
-                    {s.prompts[0]}
-                  </button>
+          <ul className="mt-3 divide-y divide-border border-y border-border">
+            {orderedSubjects.map((s) => (
+              <li key={s.id}>
+                <button
+                  onClick={() => ask(s.prompts[0], s.id)}
+                  className="group flex w-full items-center gap-3 py-3 text-left font-serif text-[1.02rem] text-foreground/90 hover:text-foreground"
+                >
+                  <s.icon className={cn('h-4 w-4 shrink-0', s.ink)} aria-label={s.label} />
+                  <span className="group-hover:marker">{s.prompts[0]}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        {/* Recent sessions: phones only. On wider screens the sidebar already lists them. */}
+        {(loading || sessions.length > 0) && (
+          <section className="mt-12 md:hidden" aria-labelledby="recent">
+            <h2 id="recent" className="font-serif text-lg font-semibold">
+              Pick up where you left off
+            </h2>
+            {loading ? (
+              <div className="mt-3 space-y-2">
+                {[0, 1, 2].map((i) => (
+                  <div key={i} className="h-12 animate-pulse rounded-md bg-muted" />
                 ))}
               </div>
-            </div>
-          ) : (
-            <ul className="mt-3 divide-y divide-border border-y border-border">
-              {sessions.slice(0, 5).map((s) => {
-                const subj = getSubject(s.subject);
-                return (
-                  <li key={s.id}>
-                    <Link
-                      to={`/chat?session=${s.id}`}
-                      className="group flex items-center gap-3 py-3 hover:text-foreground"
-                    >
-                      {subj ? (
-                        <subj.icon className={cn('h-4 w-4 shrink-0', subj.ink)} aria-label={subj.label} />
-                      ) : (
-                        <span className="h-4 w-4 shrink-0" />
-                      )}
-                      <span className="min-w-0 flex-1 truncate group-hover:underline group-hover:underline-offset-4">
-                        {s.title || 'Untitled question'}
-                      </span>
-                      <time className="shrink-0 text-xs text-muted-foreground" dateTime={s.created_at}>
-                        {relativeTime(s.created_at)}
-                      </time>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </section>
+            ) : (
+              <ul className="mt-3 divide-y divide-border border-y border-border">
+                {sessions.slice(0, 5).map((s) => {
+                  const subj = getSubject(s.subject);
+                  return (
+                    <li key={s.id}>
+                      <Link to={`/chat?session=${s.id}`} className="group flex items-center gap-3 py-3">
+                        {subj ? (
+                          <subj.icon className={cn('h-4 w-4 shrink-0', subj.ink)} aria-label={subj.label} />
+                        ) : (
+                          <span className="h-4 w-4 shrink-0" />
+                        )}
+                        <span className="min-w-0 flex-1 truncate group-hover:underline group-hover:underline-offset-4">
+                          {s.title || 'Untitled question'}
+                        </span>
+                        <time className="shrink-0 text-xs text-muted-foreground" dateTime={s.created_at}>
+                          {relativeTime(s.created_at)}
+                        </time>
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+        )}
 
         {/* Progress, only when the tutor has learned something about the student */}
         {(weak.length > 0 || mastered.length > 0) && (
